@@ -27,12 +27,11 @@ let timeLogsCache = [];
 // UTILS DATE / HEURE
 // ============================================
 
-// Retourne le lundi (00:00) de la semaine contenant `date`, format YYYY-MM-DD
-function getMonday(date) {
+// Retourne le dimanche (00:00) de la semaine contenant `date` — la semaine commence le dimanche, finit le samedi
+function getWeekStart(date) {
   const d = new Date(date);
-  const day = d.getDay(); // 0 = dimanche
-  const diff = (day === 0 ? -6 : 1 - day);
-  d.setDate(d.getDate() + diff);
+  const day = d.getDay(); // 0 = dimanche, ... 6 = samedi
+  d.setDate(d.getDate() - day);
   d.setHours(0,0,0,0);
   return d;
 }
@@ -561,6 +560,7 @@ function renderEmployeeList() {
     <div class="emp-list-row">
       <div><span class="emp-name">${emp.full_name}</span><span class="emp-pin">PIN: ${emp.pin_code}</span></div>
       <div class="emp-actions">
+        <button onclick="openHistoryModal('${emp.id}')">Historique</button>
         <button onclick="openEmployeeModal('${emp.id}')">Modifier</button>
         <button onclick="deactivateEmployee('${emp.id}')">Désactiver</button>
       </div>
@@ -611,6 +611,75 @@ async function deactivateEmployee(id) {
   await initAdmin();
 }
 
+// --- Historique mensuel par employé ---
+const HISTORY_MONTHS_COUNT = 12; // nombre de mois passés affichés (mois en cours + 11 précédents)
+
+async function openHistoryModal(employeeId) {
+  const emp = employees.find(e => e.id === employeeId);
+  document.getElementById("historyModalTitle").textContent = `Historique — ${emp ? emp.full_name : ''}`;
+  document.getElementById("historyTable").innerHTML = `<tr><td class="empty-state">Calcul en cours…</td></tr>`;
+  document.getElementById("historyModalOverlay").classList.add("active");
+
+  const allShifts = await loadAllShifts();
+  const now = new Date();
+  const rows = [];
+
+  for (let i = 0; i < HISTORY_MONTHS_COUNT; i++) {
+    const monthDate = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const monthStart = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
+    const monthEnd = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 1);
+
+    const { data: logs } = await sb.from("time_logs").select("*")
+      .eq("employee_id", employeeId)
+      .gte("timestamp", monthStart.toISOString())
+      .lt("timestamp", monthEnd.toISOString());
+
+    const { data: dayAdjustments } = await sb.from("hours_adjustments").select("*")
+      .eq("employee_id", employeeId)
+      .eq("period_type", "day")
+      .gte("period_date", fmtDate(monthStart))
+      .lt("period_date", fmtDate(monthEnd));
+    const dayAdjustmentsMap = {};
+    (dayAdjustments || []).forEach(a => {
+      if (!dayAdjustmentsMap[a.employee_id]) dayAdjustmentsMap[a.employee_id] = {};
+      dayAdjustmentsMap[a.employee_id][a.period_date] = parseFloat(a.total_hours);
+    });
+
+    const worked = computeWorkedHoursWithAdjustments(employeeId, monthStart, monthEnd, logs || [], dayAdjustmentsMap);
+    const theoretical = computeTheoreticalHours(employeeId, monthStart, monthEnd, allShifts);
+
+    // On n'affiche pas les mois totalement vides avant l'embauche, sauf le mois en cours
+    if (i > 0 && worked === 0 && theoretical === 0) continue;
+
+    rows.push({ monthDate, worked, theoretical });
+  }
+
+  const monthNames = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
+  let html = "<tr><th>Mois</th><th>Heures travaillées</th><th>Heures prévues</th><th>Écart</th></tr>";
+  if (rows.length === 0) {
+    html += `<tr><td colspan="4" class="empty-state">Aucune donnée pour l'instant</td></tr>`;
+  } else {
+    rows.forEach(r => {
+      const diff = r.worked - r.theoretical;
+      let diffClass = "hours-ok";
+      if (diff > 0.05) diffClass = "hours-over";
+      else if (diff < -0.05) diffClass = "hours-under";
+      const label = `${monthNames[r.monthDate.getMonth()]} ${r.monthDate.getFullYear()}`;
+      html += `<tr>
+        <td class="emp-col">${label}</td>
+        <td>${fmtHours(r.worked)}</td>
+        <td>${fmtHours(r.theoretical)}</td>
+        <td class="${diffClass}">${diff >= 0 ? "+" : ""}${fmtHours(diff)}</td>
+      </tr>`;
+    });
+  }
+  document.getElementById("historyTable").innerHTML = html;
+}
+
+function closeHistoryModal() {
+  document.getElementById("historyModalOverlay").classList.remove("active");
+}
+
 // ============================================
 // SCHEDULE (PLANNING) — un seul planning récurrent, pas de notion de semaine
 // ============================================
@@ -620,35 +689,68 @@ async function loadAllShifts() {
   return data;
 }
 
+// Lundi de la semaine actuellement affichée dans l'onglet Planning (state global, navigable)
+let scheduleDisplayedWeekStart = getWeekStart(new Date());
+
+function scheduleWeekShift(deltaWeeks, resetToToday) {
+  if (resetToToday) {
+    scheduleDisplayedWeekStart = getWeekStart(new Date());
+  } else {
+    scheduleDisplayedWeekStart = new Date(scheduleDisplayedWeekStart);
+    scheduleDisplayedWeekStart.setDate(scheduleDisplayedWeekStart.getDate() + deltaWeeks * 7);
+  }
+  renderScheduleGrid();
+}
+
 async function renderScheduleGrid() {
   scheduleShifts = await loadAllShifts();
 
+  const weekStart = new Date(scheduleDisplayedWeekStart); // dimanche
+  const todayStr = fmtDate(new Date());
+
+  // Construit les 7 dates réelles de la semaine affichée, dans l'ordre Dimanche -> Samedi
+  const dayOrder = [0,1,2,3,4,5,6];
+  const datesForDay = {}; // day_of_week -> Date object
+  dayOrder.forEach((day, i) => {
+    const d = new Date(weekStart);
+    d.setDate(d.getDate() + i);
+    datesForDay[day] = d;
+  });
+
+  const weekEnd = new Date(weekStart); weekEnd.setDate(weekEnd.getDate() + 6);
+  document.getElementById("scheduleWeekLabel").textContent =
+    `${weekStart.getDate()}/${weekStart.getMonth()+1} → ${weekEnd.getDate()}/${weekEnd.getMonth()+1}/${weekEnd.getFullYear()}`;
+
   const table = document.getElementById("scheduleTable");
   let html = "<tr><th>Employé</th>";
-  for (let d = 1; d <= 6; d++) html += `<th>${DAY_NAMES[d]}</th>`;
-  html += `<th>${DAY_NAMES[0]}</th><th>Total théorique</th></tr>`;
-
-  const dayOrder = [1,2,3,4,5,6,0]; // Lundi -> Dimanche
+  dayOrder.forEach(day => {
+    const d = datesForDay[day];
+    const isToday = fmtDate(d) === todayStr;
+    html += `<th class="${isToday ? 'today-col' : ''}">${DAY_NAMES[day]} ${d.getDate()}${isToday ? '<div class="today-badge">Aujourd\'hui</div>' : ''}</th>`;
+  });
+  html += `<th>Total théorique</th></tr>`;
 
   employees.forEach(emp => {
     html += `<tr><td class="emp-col">${emp.full_name}</td>`;
     let weekTotal = 0;
     dayOrder.forEach(day => {
+      const isToday = fmtDate(datesForDay[day]) === todayStr;
+      const todayClass = isToday ? ' today-col' : '';
       const shiftsForDay = scheduleShifts
         .filter(s => s.employee_id === emp.id && s.day_of_week === day)
         .sort((a,b) => a.shift_order - b.shift_order);
 
       if (shiftsForDay.length === 0) {
-        html += `<td class="shift-cell" onclick="openShiftModal('${emp.id}', ${day})">—</td>`;
+        html += `<td class="shift-cell${todayClass}" onclick="openShiftModal('${emp.id}', ${day})">—</td>`;
       } else if (shiftsForDay[0].is_rest) {
-        html += `<td class="rest-cell" onclick="openShiftModal('${emp.id}', ${day})">R</td>`;
+        html += `<td class="rest-cell${todayClass}" onclick="openShiftModal('${emp.id}', ${day})">R</td>`;
       } else {
         const lines = shiftsForDay.map(s => {
           const dur = shiftDurationHours(s.start_time, s.end_time);
           weekTotal += dur;
           return `<div class="shift-line">${fmtTimeShort(s.start_time)}–${fmtTimeShort(s.end_time)}</div>`;
         }).join("");
-        html += `<td class="shift-cell" onclick="openShiftModal('${emp.id}', ${day})">${lines}</td>`;
+        html += `<td class="shift-cell${todayClass}" onclick="openShiftModal('${emp.id}', ${day})">${lines}</td>`;
       }
     });
     html += `<td><strong>${fmtHours(weekTotal)}</strong></td></tr>`;
@@ -785,7 +887,7 @@ function getPeriodRangeFor(typeFieldId, dateFieldId) {
   } else if (type === "day") {
     start = new Date(date); end = new Date(date); end.setDate(end.getDate()+1);
   } else if (type === "week") {
-    start = getMonday(date); end = new Date(start); end.setDate(end.getDate()+7);
+    start = getWeekStart(date); end = new Date(start); end.setDate(end.getDate()+7);
   } else {
     start = new Date(date.getFullYear(), date.getMonth(), 1);
     end = new Date(date.getFullYear(), date.getMonth()+1, 1);
@@ -859,7 +961,7 @@ async function renderHoursTable() {
   const { start, end } = getPeriodRange();
   const periodType = document.getElementById("hoursPeriodType").value;
   const periodDate = document.getElementById("hoursPeriodDate").value || fmtDate(new Date());
-  const refDate = periodType === "week" ? fmtDate(getMonday(new Date(periodDate + "T00:00:00")))
+  const refDate = periodType === "week" ? fmtDate(getWeekStart(new Date(periodDate + "T00:00:00")))
                 : periodType === "month" ? periodDate.slice(0,8) + "01"
                 : periodDate;
 
@@ -1166,22 +1268,37 @@ async function renderMyspaceSchedule() {
   const allShifts = await loadAllShifts();
   const myShifts = allShifts.filter(s => s.employee_id === myspaceEmployee.id);
 
+  const weekStart = getWeekStart(new Date());
+  const todayStr = fmtDate(new Date());
+  const dayOrder = [0,1,2,3,4,5,6];
+  const datesForDay = {};
+  dayOrder.forEach((day, i) => {
+    const d = new Date(weekStart);
+    d.setDate(d.getDate() + i);
+    datesForDay[day] = d;
+  });
+
   const table = document.getElementById("myspaceScheduleTable");
-  const dayOrder = [1,2,3,4,5,6,0];
-  let html = "<tr>" + dayOrder.map(d => `<th>${DAY_NAMES[d]}</th>`).join("") + "<th>Total</th></tr><tr>";
+  let html = "<tr>" + dayOrder.map(day => {
+    const d = datesForDay[day];
+    const isToday = fmtDate(d) === todayStr;
+    return `<th class="${isToday ? 'today-col' : ''}">${DAY_NAMES[day]} ${d.getDate()}${isToday ? '<div class="today-badge">Aujourd\'hui</div>' : ''}</th>`;
+  }).join("") + "<th>Total</th></tr><tr>";
   let weekTotal = 0;
   dayOrder.forEach(day => {
+    const isToday = fmtDate(datesForDay[day]) === todayStr;
+    const todayClass = isToday ? ' today-col' : '';
     const shiftsForDay = myShifts.filter(s => s.day_of_week === day).sort((a,b) => a.shift_order - b.shift_order);
     if (shiftsForDay.length === 0) {
-      html += `<td>—</td>`;
+      html += `<td class="${todayClass}">—</td>`;
     } else if (shiftsForDay[0].is_rest) {
-      html += `<td class="rest-cell">R</td>`;
+      html += `<td class="rest-cell${todayClass}">R</td>`;
     } else {
       const lines = shiftsForDay.map(s => {
         weekTotal += shiftDurationHours(s.start_time, s.end_time);
         return `<div class="shift-line">${fmtTimeShort(s.start_time)}–${fmtTimeShort(s.end_time)}</div>`;
       }).join("");
-      html += `<td>${lines}</td>`;
+      html += `<td class="${todayClass}">${lines}</td>`;
     }
   });
   html += `<td><strong>${fmtHours(weekTotal)}</strong></td></tr>`;

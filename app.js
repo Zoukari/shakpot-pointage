@@ -187,6 +187,10 @@ async function activateKiosk() {
 
   if (code === correctCode && code.length > 0) {
     await registerNewDevice(false, null);
+    // Usage unique : on change la racine secrète immédiatement après utilisation
+    // pour invalider ce code et en générer un nouveau
+    const newRoot = "shakpot-" + Math.random().toString(36).slice(2) + Date.now();
+    await sb.from("app_settings").upsert({ key: "kiosk_secret_root", value: newRoot });
     document.getElementById("kioskActivationError").style.display = "none";
     document.getElementById("kioskActivationCode").value = "";
     checkKioskActivation();
@@ -1653,6 +1657,7 @@ function initAccountingTab() {
   loadAccountingDay();
   renderAccountingSummary();
   populateChargeEmployeeSelect();
+  loadMonthBalance();
 }
 
 function onAccountingDateChange() {
@@ -1928,111 +1933,117 @@ function getPeriodRangeFromFields(typeId, dateId) {
 async function renderAccountingSummary() {
   const { start, end } = getPeriodRangeFor("accountingPeriodType", "accountingPeriodDate");
   const startStr = fmtDate(start), endStr = fmtDate(end);
+  document.getElementById("accountingSummary").innerHTML = `<div style="text-align:center;color:var(--gray);padding:20px;">Chargement…</div>`;
 
-  const [purchasesRes, chargesRes, revenueRes] = await Promise.all([
+  const [purchasesRes, chargesRes, revenueRes, debtsRes] = await Promise.all([
     sb.from("accounting_purchases").select("*").gte("entry_date", startStr).lt("entry_date", endStr).order("entry_date").order("created_at"),
     sb.from("accounting_charges").select("*, employees(full_name)").gte("entry_date", startStr).lt("entry_date", endStr).order("entry_date").order("created_at"),
-    sb.from("accounting_revenue").select("*").gte("entry_date", startStr).lt("entry_date", endStr).order("entry_date")
+    sb.from("accounting_revenue").select("*").gte("entry_date", startStr).lt("entry_date", endStr).order("entry_date"),
+    sb.from("accounting_delivery_debts").select("*").gte("entry_date", startStr).lt("entry_date", endStr).order("entry_date")
   ]);
 
   const purchases = purchasesRes.data || [];
   const charges = chargesRes.data || [];
   const revenues = revenueRes.data || [];
-
+  const debts = debtsRes.data || [];
   const totalCA = revenues.reduce((s, r) => s + parseFloat(r.amount), 0);
   const totalPurchases = purchases.reduce((s, p) => s + parseFloat(p.amount), 0);
   const totalCharges = charges.reduce((s, c) => s + parseFloat(c.amount), 0);
-  const netProfit = totalCA - totalPurchases - totalCharges;
+  const totalDebtNet = debts.reduce((s, d) => s + (parseFloat(d.amount_given) - parseFloat(d.amount_paid)), 0);
+  const netProfit = totalCA - totalPurchases - totalCharges - Math.max(0, totalDebtNet);
   const chargeTypeLabels = { loyer:"Loyer", gaz:"Gaz", electricite:"Électricité", credit:"Crédit", salaire:"Salaire", autre:"Autre" };
 
-  let html = `
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:20px;">
-      <div style="background:var(--green-bg);border-radius:12px;padding:16px;text-align:center;">
-        <div style="font-size:13px;color:var(--green);font-weight:700;">📈 CA total</div>
-        <div style="font-size:28px;font-weight:800;color:var(--green);">${totalCA.toFixed(2)} FDJ</div>
-      </div>
-      <div style="background:var(--red-bg);border-radius:12px;padding:16px;text-align:center;">
-        <div style="font-size:13px;color:var(--red-text);font-weight:700;">🛒 Courses</div>
-        <div style="font-size:28px;font-weight:800;color:var(--red-text);">${totalPurchases.toFixed(2)} FDJ</div>
-      </div>
-      <div style="background:var(--red-bg);border-radius:12px;padding:16px;text-align:center;">
-        <div style="font-size:13px;color:var(--red-text);font-weight:700;">💳 Charges</div>
-        <div style="font-size:28px;font-weight:800;color:var(--red-text);">${totalCharges.toFixed(2)} FDJ</div>
-      </div>
-      <div style="background:${netProfit >= 0 ? 'var(--green-bg)' : 'var(--red-bg)'};border-radius:12px;padding:16px;text-align:center;grid-column:1/-1;">
-        <div style="font-size:13px;color:${netProfit >= 0 ? 'var(--green)' : 'var(--red-text)'};font-weight:700;">💰 Bénéfice net</div>
-        <div style="font-size:36px;font-weight:800;color:${netProfit >= 0 ? 'var(--green)' : 'var(--red-text)'};">${netProfit >= 0 ? '+' : ''}${netProfit.toFixed(2)} FDJ</div>
-        <div style="font-size:12px;color:var(--gray);margin-top:4px;">CA ${totalCA.toFixed(2)} − courses ${totalPurchases.toFixed(2)} − charges ${totalCharges.toFixed(2)}</div>
-      </div>
-    </div>`;
+  const monthStart = new Date(start.getFullYear(), start.getMonth(), 1);
+  const monthStr = fmtDate(monthStart);
+  const { data: balanceData } = await sb.from("accounting_month_balance").select("*").eq("month_date", monthStr).maybeSingle();
+  const monthBalance = balanceData ? (balanceData.manual_override ?? balanceData.auto_amount ?? 0) : 0;
+  const totalAvailable = netProfit + parseFloat(monthBalance || 0);
 
-  // --- CA par jour (modifiable) ---
+  let html = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:20px;">
+    ${monthBalance ? `<div style="background:var(--rose-pale);border-radius:12px;padding:16px;text-align:center;">
+      <div style="font-size:12px;color:var(--bordeaux);font-weight:700;">💵 Argent M-1</div>
+      <div style="font-size:22px;font-weight:800;color:var(--bordeaux-dark);">${parseFloat(monthBalance).toFixed(2)} FDJ</div></div>` : ''}
+    <div style="background:var(--green-bg);border-radius:12px;padding:16px;text-align:center;">
+      <div style="font-size:12px;color:var(--green);font-weight:700;">📈 CA total</div>
+      <div style="font-size:26px;font-weight:800;color:var(--green);">${totalCA.toFixed(2)} FDJ</div></div>
+    <div style="background:var(--red-bg);border-radius:12px;padding:16px;text-align:center;">
+      <div style="font-size:12px;color:var(--red-text);font-weight:700;">🛒 Courses</div>
+      <div style="font-size:22px;font-weight:800;color:var(--red-text);">${totalPurchases.toFixed(2)} FDJ</div></div>
+    <div style="background:var(--red-bg);border-radius:12px;padding:16px;text-align:center;">
+      <div style="font-size:12px;color:var(--red-text);font-weight:700;">💳 Charges</div>
+      <div style="font-size:22px;font-weight:800;color:var(--red-text);">${totalCharges.toFixed(2)} FDJ</div></div>
+    ${debts.length > 0 ? `<div style="background:var(--rose-pale);border-radius:12px;padding:16px;text-align:center;">
+      <div style="font-size:12px;color:var(--bordeaux);font-weight:700;">🚚 Livreur</div>
+      <div style="font-size:22px;font-weight:800;color:${totalDebtNet > 0 ? 'var(--red-text)' : 'var(--green)'};">${totalDebtNet >= 0 ? '-' : '+'}${Math.abs(totalDebtNet).toFixed(2)} FDJ</div></div>` : ''}
+    <div style="background:${netProfit >= 0 ? 'var(--green-bg)' : 'var(--red-bg)'};border-radius:12px;padding:16px;text-align:center;grid-column:1/-1;">
+      <div style="font-size:13px;color:${netProfit >= 0 ? 'var(--green)' : 'var(--red-text)'};font-weight:700;">💰 Bénéfice net</div>
+      <div style="font-size:34px;font-weight:800;color:${netProfit >= 0 ? 'var(--green)' : 'var(--red-text)'};">${netProfit >= 0 ? '+' : ''}${netProfit.toFixed(2)} FDJ</div>
+      ${monthBalance ? `<div style="font-size:13px;font-weight:700;color:var(--bordeaux-dark);margin-top:6px;">Total disponible : ${totalAvailable.toFixed(2)} FDJ</div>` : ''}
+    </div></div>`;
+
   if (revenues.length > 0) {
-    html += `<h4 style="color:var(--bordeaux-dark);margin-bottom:8px;">📈 CA par jour</h4>
-    <table><tr><th>Date</th><th>Montant</th><th></th></tr>`;
+    html += `<h4 style="color:var(--bordeaux-dark);margin-bottom:8px;">📈 CA par jour</h4><table><tr><th>Date</th><th>Montant</th><th></th></tr>`;
     revenues.forEach(r => {
-      html += `<tr>
-        <td>${r.entry_date}</td>
-        <td>${parseFloat(r.amount).toFixed(2)} FDJ</td>
-        <td>
-          <button onclick="editCA('${r.id}','${r.entry_date}',${r.amount})" style="border:1px solid var(--rose-light);background:transparent;border-radius:8px;padding:4px 10px;cursor:pointer;margin-right:4px;">Modifier</button>
-          <button onclick="deleteCA('${r.id}')" style="border:none;background:var(--red-bg);color:var(--red-text);border-radius:8px;padding:4px 10px;cursor:pointer;font-weight:700;">✕</button>
-        </td>
-      </tr>`;
+      html += `<tr><td>${r.entry_date}</td><td>${parseFloat(r.amount).toFixed(2)} FDJ</td><td>
+        <button onclick="editCA('${r.id}','${r.entry_date}',${r.amount})" style="border:1px solid var(--rose-light);background:transparent;border-radius:8px;padding:4px 8px;cursor:pointer;margin-right:4px;">✏</button>
+        <button onclick="deleteCA('${r.id}')" style="border:none;background:var(--red-bg);color:var(--red-text);border-radius:8px;padding:4px 8px;cursor:pointer;">✕</button></td></tr>`;
     });
     html += `</table>`;
   }
 
-  // --- Courses (modifiables + supprimables) ---
   if (purchases.length > 0) {
-    html += `<h4 style="color:var(--bordeaux-dark);margin:16px 0 8px;">🛒 Détail des courses</h4>
-    <table><tr><th>Date</th><th>Magasin</th><th>Montant</th><th>Facture</th><th></th></tr>`;
-    purchases.forEach(p => {
-      const photo = p.photo_url
-        ? `<img src="${p.photo_url}" style="height:36px;border-radius:8px;cursor:pointer;object-fit:cover;" onclick="viewPhoto('${p.photo_url}','Facture — ${p.store_name}')">`
-        : '—';
-      html += `<tr>
-        <td>${p.entry_date}</td>
-        <td>${p.store_name}</td>
-        <td>${parseFloat(p.amount).toFixed(2)} FDJ</td>
-        <td>${photo}</td>
-        <td style="white-space:nowrap;">
-          <button onclick="editPurchase('${p.id}','${p.entry_date}','${p.store_name.replace(/'/g,"\\'")}',${p.amount})" style="border:1px solid var(--rose-light);background:transparent;border-radius:8px;padding:4px 10px;cursor:pointer;margin-right:4px;">Modifier</button>
-          <button onclick="deletePurchase('${p.id}')" style="border:none;background:var(--red-bg);color:var(--red-text);border-radius:8px;padding:4px 10px;cursor:pointer;font-weight:700;">✕</button>
-        </td>
-      </tr>`;
+    const byDay = {};
+    purchases.forEach(p => { if (!byDay[p.entry_date]) byDay[p.entry_date] = []; byDay[p.entry_date].push(p); });
+    html += `<h4 style="color:var(--bordeaux-dark);margin:16px 0 8px;">🛒 Courses par jour</h4>`;
+    Object.entries(byDay).sort((a,b) => a[0].localeCompare(b[0])).forEach(([date, items]) => {
+      const dayTotal = items.reduce((s, p) => s + parseFloat(p.amount), 0);
+      const did = "day_" + date.replace(/-/g,'_');
+      html += `<div style="border:1px solid var(--rose-light);border-radius:10px;margin-bottom:8px;overflow:hidden;">
+        <div style="background:var(--rose-pale);padding:10px 14px;font-weight:700;cursor:pointer;display:flex;justify-content:space-between;" onclick="toggleDayDetail('${did}')">
+          <span>${date}</span><span>${dayTotal.toFixed(2)} FDJ ▾</span></div>
+        <div id="${did}" style="display:none;padding:8px 14px;"><table style="width:100%;"><tr><th>Magasin</th><th>Montant</th><th>Facture</th><th></th></tr>`;
+      items.forEach(p => {
+        const photo = p.photo_url ? `<img src="${p.photo_url}" style="height:32px;border-radius:6px;cursor:pointer;" onclick="viewPhoto('${p.photo_url}','Facture — ${p.store_name}')">` : '—';
+        html += `<tr><td>${p.store_name}</td><td>${parseFloat(p.amount).toFixed(2)} FDJ</td><td>${photo}</td><td style="white-space:nowrap;">
+          <button onclick="editPurchase('${p.id}','${p.entry_date}','${p.store_name.replace(/'/g,"\'")}',${p.amount})" style="border:1px solid var(--rose-light);background:transparent;border-radius:8px;padding:4px 8px;cursor:pointer;margin-right:4px;">✏</button>
+          <button onclick="deletePurchase('${p.id}')" style="border:none;background:var(--red-bg);color:var(--red-text);border-radius:8px;padding:4px 8px;cursor:pointer;">✕</button></td></tr>`;
+      });
+      html += `</table></div></div>`;
     });
-    html += `</table>`;
   }
 
-  // --- Charges (modifiables + supprimables) ---
   if (charges.length > 0) {
-    html += `<h4 style="color:var(--bordeaux-dark);margin:16px 0 8px;">💳 Détail des charges</h4>
-    <table><tr><th>Date</th><th>Type</th><th>Détail</th><th>Montant</th><th></th></tr>`;
+    html += `<h4 style="color:var(--bordeaux-dark);margin:16px 0 8px;">💳 Charges</h4><table><tr><th>Date</th><th>Type</th><th>Détail</th><th>Montant</th><th></th></tr>`;
     charges.forEach(c => {
       const detail = c.charge_type === "salaire" ? (c.employees?.full_name || "—") : (c.label || "—");
-      html += `<tr>
-        <td>${c.entry_date}</td>
-        <td>${chargeTypeLabels[c.charge_type] || c.charge_type}</td>
-        <td>${detail}</td>
-        <td>${parseFloat(c.amount).toFixed(2)} FDJ</td>
-        <td style="white-space:nowrap;">
-          <button onclick="editCharge('${c.id}','${c.entry_date}',${c.amount})" style="border:1px solid var(--rose-light);background:transparent;border-radius:8px;padding:4px 10px;cursor:pointer;margin-right:4px;">Modifier</button>
-          <button onclick="deleteCharge('${c.id}')" style="border:none;background:var(--red-bg);color:var(--red-text);border-radius:8px;padding:4px 10px;cursor:pointer;font-weight:700;">✕</button>
-        </td>
-      </tr>`;
+      html += `<tr><td>${c.entry_date}</td><td>${chargeTypeLabels[c.charge_type]||c.charge_type}</td><td>${detail}</td><td>${parseFloat(c.amount).toFixed(2)} FDJ</td><td style="white-space:nowrap;">
+        <button onclick="editCharge('${c.id}','${c.entry_date}',${c.amount})" style="border:1px solid var(--rose-light);background:transparent;border-radius:8px;padding:4px 8px;cursor:pointer;margin-right:4px;">✏</button>
+        <button onclick="deleteCharge('${c.id}')" style="border:none;background:var(--red-bg);color:var(--red-text);border-radius:8px;padding:4px 8px;cursor:pointer;">✕</button></td></tr>`;
     });
     html += `</table>`;
   }
 
-  if (purchases.length === 0 && charges.length === 0 && revenues.length === 0) {
-    html += `<div class="empty-state">Aucune donnée pour cette période.</div>`;
+  if (debts.length > 0) {
+    html += `<h4 style="color:var(--bordeaux-dark);margin:16px 0 8px;">🚚 Dettes livreur</h4><table><tr><th>Date</th><th>Donné</th><th>Payé</th><th>Solde</th><th>Note</th><th></th></tr>`;
+    debts.forEach(d => {
+      const diff = parseFloat(d.amount_paid) - parseFloat(d.amount_given);
+      html += `<tr><td>${d.entry_date}</td><td>${parseFloat(d.amount_given).toFixed(2)}</td><td>${parseFloat(d.amount_paid).toFixed(2)}</td>
+        <td style="color:${diff>=0?'var(--green)':'var(--red-text)'};font-weight:700;">${diff>=0?'+':''}${diff.toFixed(2)} FDJ</td>
+        <td>${d.note||'—'}</td>
+        <td><button onclick="deleteDebt('${d.id}')" style="border:none;background:var(--red-bg);color:var(--red-text);border-radius:8px;padding:4px 8px;cursor:pointer;">✕</button></td></tr>`;
+    });
+    html += `</table>`;
   }
 
+  if (!purchases.length && !charges.length && !revenues.length && !debts.length)
+    html += `<div class="empty-state">Aucune donnée pour cette période.</div>`;
+
   document.getElementById("accountingSummary").innerHTML = html;
+  if (document.getElementById("accountingPeriodType").value === "month") loadMonthBalance();
 }
 
 // --- Modifier / supprimer CA ---
+
 async function editCA(id, date, currentAmount) {
   const val = prompt(`Modifier le CA du ${date} (FDJ) :`, currentAmount);
   if (val === null) return;
@@ -2186,6 +2197,117 @@ async function submitMyspaceDay() {
   });
   if (error) { alert("Erreur: " + error.message); return; }
   loadMyspaceAccountingDay(); // rechargera et affichera le message de confirmation
+}
+
+// ============================================
+// DETTE LIVREUR
+// ============================================
+function updateDebtPreview() {
+  const given = parseFloat(document.getElementById("debtGiven").value) || 0;
+  const paid = parseFloat(document.getElementById("debtPaid").value) || 0;
+  const diff = paid - given;
+  const el = document.getElementById("debtPreview");
+  if (given === 0 && paid === 0) { el.textContent = ""; return; }
+  if (diff > 0) {
+    el.style.color = "var(--green)";
+    el.textContent = `✓ Le livreur nous paye : +${diff.toFixed(2)} FDJ`;
+  } else if (diff < 0) {
+    el.style.color = "var(--red-text)";
+    el.textContent = `⚠ On lui doit encore : ${Math.abs(diff).toFixed(2)} FDJ`;
+  } else {
+    el.style.color = "var(--gray)";
+    el.textContent = "Équilibré";
+  }
+}
+
+async function saveDebt() {
+  const dateVal = document.getElementById("accountingDate").value;
+  const given = parseFloat(document.getElementById("debtGiven").value) || 0;
+  const paid = parseFloat(document.getElementById("debtPaid").value) || 0;
+  const note = document.getElementById("debtNote").value.trim();
+  if (given === 0 && paid === 0) { alert("Merci de saisir au moins un montant."); return; }
+  const { error } = await sb.from("accounting_delivery_debts").insert({
+    entry_date: dateVal, amount_given: given, amount_paid: paid,
+    note: note || null, entered_by: null
+  });
+  if (error) { alert("Erreur: " + error.message); return; }
+  document.getElementById("debtGiven").value = "";
+  document.getElementById("debtPaid").value = "";
+  document.getElementById("debtNote").value = "";
+  document.getElementById("debtPreview").textContent = "";
+  const diff = paid - given;
+  showToast(`✓ Dette livreur enregistrée : ${diff >= 0 ? "+" : ""}${diff.toFixed(2)} FDJ`);
+  loadAccountingDay();
+  renderAccountingSummary();
+}
+
+async function saveMyspaceDebt() {
+  const dateVal = document.getElementById("myspaceAccountingDate").value;
+  const given = parseFloat(document.getElementById("myspaceDebtGiven").value) || 0;
+  const paid = parseFloat(document.getElementById("myspaceDebtPaid").value) || 0;
+  if (given === 0 && paid === 0) { alert("Merci de saisir au moins un montant."); return; }
+  const { error } = await sb.from("accounting_delivery_debts").insert({
+    entry_date: dateVal, amount_given: given, amount_paid: paid,
+    entered_by: myspaceEmployee ? myspaceEmployee.id : null
+  });
+  if (error) { alert("Erreur: " + error.message); return; }
+  document.getElementById("myspaceDebtGiven").value = "";
+  document.getElementById("myspaceDebtPaid").value = "";
+  document.getElementById("myspaceDebtPreview").textContent = "";
+  showToast("✓ Dette livreur enregistrée");
+  loadMyspaceAccountingDay();
+}
+
+// ============================================
+// ARGENT DU MOIS (solde de départ)
+// ============================================
+async function loadMonthBalance() {
+  const { start } = getPeriodRangeFor("accountingPeriodType", "accountingPeriodDate");
+  const monthStart = new Date(start.getFullYear(), start.getMonth(), 1);
+  const prevMonthStart = new Date(start.getFullYear(), start.getMonth() - 1, 1);
+  const prevMonthEnd = new Date(start.getFullYear(), start.getMonth(), 1);
+
+  // Calcule le bénéfice net du mois précédent automatiquement
+  const prevStartStr = fmtDate(prevMonthStart);
+  const prevEndStr = fmtDate(prevMonthEnd);
+  const [purchasesRes, chargesRes, revenueRes, debtsRes] = await Promise.all([
+    sb.from("accounting_purchases").select("amount").gte("entry_date", prevStartStr).lt("entry_date", prevEndStr),
+    sb.from("accounting_charges").select("amount").gte("entry_date", prevStartStr).lt("entry_date", prevEndStr),
+    sb.from("accounting_revenue").select("amount").gte("entry_date", prevStartStr).lt("entry_date", prevEndStr),
+    sb.from("accounting_delivery_debts").select("amount_given,amount_paid").gte("entry_date", prevStartStr).lt("entry_date", prevEndStr)
+  ]);
+  const totalCA = (revenueRes.data || []).reduce((s, r) => s + parseFloat(r.amount), 0);
+  const totalPurchases = (purchasesRes.data || []).reduce((s, p) => s + parseFloat(p.amount), 0);
+  const totalCharges = (chargesRes.data || []).reduce((s, c) => s + parseFloat(c.amount), 0);
+  const totalDebt = (debtsRes.data || []).reduce((s, d) => s + (parseFloat(d.amount_paid) - parseFloat(d.amount_given)), 0);
+  const autoPrevBenefit = totalCA - totalPurchases - totalCharges - Math.max(0, -totalDebt);
+  document.getElementById("monthBalanceAutoAmount").textContent = autoPrevBenefit.toFixed(2) + " FDJ";
+
+  // Récupère la saisie manuelle si elle existe
+  const monthStr = fmtDate(monthStart);
+  const { data: balance } = await sb.from("accounting_month_balance").select("*").eq("month_date", monthStr).maybeSingle();
+  if (balance && balance.manual_override !== null) {
+    document.getElementById("monthBalanceManual").value = balance.manual_override;
+  } else {
+    document.getElementById("monthBalanceManual").value = "";
+  }
+}
+
+async function saveMonthBalance() {
+  const { start } = getPeriodRangeFor("accountingPeriodType", "accountingPeriodDate");
+  const monthStart = new Date(start.getFullYear(), start.getMonth(), 1);
+  const monthStr = fmtDate(monthStart);
+  const manual = parseFloat(document.getElementById("monthBalanceManual").value);
+  const { error } = await sb.from("accounting_month_balance").upsert({
+    month_date: monthStr,
+    manual_override: isNaN(manual) ? null : manual
+  }, { onConflict: "month_date" });
+  if (error) { alert("Erreur: " + error.message); return; }
+  const msg = document.getElementById("monthBalanceMsg");
+  msg.textContent = "✓ Enregistré";
+  msg.style.color = "var(--green)";
+  setTimeout(() => { msg.textContent = ""; }, 3000);
+  renderAccountingSummary();
 }
 
 // ============================================

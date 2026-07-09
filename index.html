@@ -717,35 +717,28 @@ td.today-col.emp-col{ background: var(--rose-light) !important; color: var(--bor
       <div id="myspaceAccountingSection" style="display:none;">
         <h2 style="color:var(--bordeaux-dark);margin-top:8px;">Saisie comptabilité</h2>
 
-        <!-- État : journée déjà soumise -->
-        <div id="myspaceAccountingLocked" class="card" style="display:none;text-align:center;padding:32px;">
-          <div style="font-size:40px;margin-bottom:12px;">✅</div>
-          <div style="font-weight:800;font-size:18px;color:var(--green);" id="myspaceLockedMessage">Les informations du jour ont bien été enregistrées.</div>
-          <div style="color:var(--gray);font-size:13px;margin-top:8px;">Si une correction est nécessaire, contacte l'administrateur.</div>
-        </div>
-
-        <!-- Formulaire de saisie (affiché seulement si la journée n'est pas soumise) -->
+        <!-- Formulaire de saisie libre (pas de verrou) -->
         <div id="myspaceAccountingForm" class="card">
           <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
-            <h3 style="margin:0;">Jour à saisir</h3>
+            <h3 style="margin:0;">Saisie du jour</h3>
             <input type="date" id="myspaceAccountingDate" onchange="loadMyspaceAccountingDay()" style="padding:10px;border-radius:8px;border:2px solid var(--rose-light);font-size:14px;">
           </div>
 
           <!-- Courses -->
           <div style="margin-top:18px;">
-            <div style="font-weight:800;color:var(--bordeaux-dark);margin-bottom:10px;">🛒 Ajouter des courses</div>
+            <div style="font-weight:800;color:var(--bordeaux-dark);margin-bottom:10px;">🛒 Courses</div>
             <input type="text" id="myspacePurchaseStore" placeholder="Nom du magasin" style="width:100%;padding:10px;border-radius:8px;border:2px solid var(--rose-light);font-size:14px;margin-bottom:8px;">
             <input type="number" id="myspacePurchaseAmount" placeholder="Montant (FDJ)" step="0.01" style="width:100%;padding:10px;border-radius:8px;border:2px solid var(--rose-light);font-size:14px;margin-bottom:8px;">
             <div style="border:2px dashed var(--rose-light);border-radius:10px;padding:12px;text-align:center;cursor:pointer;" onclick="document.getElementById('myspaceReceiptInput').click()">
               <div id="myspaceReceiptPreview" style="color:var(--gray);font-size:13px;">📷 Photo de la facture (optionnel)</div>
               <input type="file" id="myspaceReceiptInput" accept="image/*" capture="environment" style="display:none;" onchange="previewMyspaceReceipt(this)">
             </div>
-            <button class="btn full" style="margin-top:10px;" onclick="saveMyspacePurchase()">+ Ajouter ces courses</button>
+            <button class="btn full" style="margin-top:10px;" onclick="saveMyspacePurchase()">+ Enregistrer</button>
           </div>
 
           <!-- Charges -->
           <div style="margin-top:18px;">
-            <div style="font-weight:800;color:var(--bordeaux-dark);margin-bottom:10px;">💳 Ajouter une charge</div>
+            <div style="font-weight:800;color:var(--bordeaux-dark);margin-bottom:10px;">💳 Charge</div>
             <select id="myspaceChargeType" onchange="toggleMyspaceChargeFields()" style="width:100%;padding:10px;border-radius:8px;border:2px solid var(--rose-light);font-size:14px;margin-bottom:8px;">
               <option value="loyer">Loyer</option>
               <option value="gaz">Gaz</option>
@@ -761,22 +754,24 @@ td.today-col.emp-col{ background: var(--rose-light) !important; color: var(--bor
               <input type="text" id="myspaceChargeLabel" placeholder="Description" style="width:100%;padding:10px;border-radius:8px;border:2px solid var(--rose-light);font-size:14px;">
             </div>
             <input type="number" id="myspaceChargeAmount" placeholder="Montant (FDJ)" step="0.01" style="width:100%;padding:10px;border-radius:8px;border:2px solid var(--rose-light);font-size:14px;margin-bottom:8px;">
-            <button class="btn full" onclick="saveMyspaceCharge()">+ Ajouter cette charge</button>
+            <button class="btn full" onclick="saveMyspaceCharge()">+ Enregistrer</button>
           </div>
 
-          <!-- Liste des saisies du jour (sans totaux, sans bénéfice) -->
+          <!-- Dette livreur -->
+          <div style="margin-top:18px;">
+            <div style="font-weight:800;color:var(--bordeaux-dark);margin-bottom:10px;">🚚 Dette livreur</div>
+            <input type="number" id="myspaceDebtGiven" placeholder="Montant donné au livreur (FDJ)" step="0.01" style="width:100%;padding:10px;border-radius:8px;border:2px solid var(--rose-light);font-size:14px;margin-bottom:8px;">
+            <input type="number" id="myspaceDebtPaid" placeholder="Montant payé par le livreur (FDJ)" step="0.01" style="width:100%;padding:10px;border-radius:8px;border:2px solid var(--rose-light);font-size:14px;margin-bottom:8px;">
+            <div id="myspaceDebtPreview" style="font-size:13px;color:var(--gray);margin-bottom:8px;"></div>
+            <button class="btn full" onclick="saveMyspaceDebt()">+ Enregistrer</button>
+          </div>
+
+          <!-- Liste des saisies du jour -->
           <div id="myspaceDayRecap" style="margin-top:18px;"></div>
-
-          <!-- Bouton soumettre la journée -->
-          <div style="margin-top:20px;padding-top:16px;border-top:2px solid var(--rose-light);">
-            <p style="color:var(--gray);font-size:13px;margin:0 0 12px;">Une fois la journée validée, les informations ne pourront plus être modifiées depuis cet écran.</p>
-            <button class="btn full" style="background:var(--green);" onclick="submitMyspaceDay()">✓ Valider et soumettre la journée</button>
-          </div>
         </div>
       </div>
     </div>
   </div>
-
 
 
   <div id="viewAdminLogin" class="view">
@@ -916,7 +911,7 @@ td.today-col.emp-col{ background: var(--rose-light) !important; color: var(--bor
           <h3 style="margin:0;">Saisie du jour</h3>
           <div class="toolbar" style="margin:0;">
             <label style="font-weight:700;font-size:14px;">Date :</label>
-            <input type="date" id="accountingDate" onchange="loadAccountingDay()">
+            <input type="date" id="accountingDate" onchange="onAccountingDateChange()">
           </div>
         </div>
         <div style="margin-top:18px;display:grid;grid-template-columns:1fr 1fr;gap:14px;">
@@ -965,7 +960,37 @@ td.today-col.emp-col{ background: var(--rose-light) !important; color: var(--bor
             </div>
             <button class="btn full" style="margin-top:10px;" onclick="saveCharge()">+ Ajouter cette charge</button>
           </div>
+
+          <!-- Dette livreur -->
+          <div style="margin-top:18px;grid-column:1/-1;">
+            <div style="font-weight:800;color:var(--bordeaux-dark);margin-bottom:10px;">🚚 Dette livreur</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+              <input type="number" id="debtGiven" placeholder="Montant donné (FDJ)" step="0.01" style="padding:10px;border-radius:8px;border:2px solid var(--rose-light);font-size:14px;" oninput="updateDebtPreview()">
+              <input type="number" id="debtPaid" placeholder="Montant payé (FDJ)" step="0.01" style="padding:10px;border-radius:8px;border:2px solid var(--rose-light);font-size:14px;" oninput="updateDebtPreview()">
+            </div>
+            <div id="debtPreview" style="font-size:13px;margin-top:6px;font-weight:700;"></div>
+            <input type="text" id="debtNote" placeholder="Note (optionnel)" style="width:100%;padding:10px;border-radius:8px;border:2px solid var(--rose-light);font-size:14px;margin-top:8px;">
+            <button class="btn full" style="margin-top:10px;" onclick="saveDebt()">+ Enregistrer dette livreur</button>
+          </div>
         </div>
+      </div>
+
+      <!-- Argent du mois -->
+      <div class="card" id="monthBalanceCard">
+        <h3>💵 Argent du mois</h3>
+        <p style="color:var(--gray);font-size:13px;margin-top:0;">Solde de départ du mois sélectionné = bénéfice net du mois précédent. Saisie manuelle possible si nécessaire.</p>
+        <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+          <div id="monthBalanceAuto" style="flex:1;background:var(--rose-pale);border-radius:10px;padding:14px;text-align:center;">
+            <div style="font-size:12px;color:var(--gray);margin-bottom:4px;">Calculé automatiquement (bénéfice M-1)</div>
+            <div id="monthBalanceAutoAmount" style="font-size:22px;font-weight:800;color:var(--bordeaux-dark);">—</div>
+          </div>
+          <div style="flex:1;">
+            <label style="font-size:13px;font-weight:700;color:var(--gray);display:block;margin-bottom:6px;">Correction manuelle (optionnel)</label>
+            <input type="number" id="monthBalanceManual" placeholder="Saisir si différent" step="0.01" style="width:100%;padding:10px;border-radius:8px;border:2px solid var(--rose-light);font-size:14px;">
+            <button class="btn full" style="margin-top:8px;" onclick="saveMonthBalance()">Enregistrer</button>
+          </div>
+        </div>
+        <div id="monthBalanceMsg" style="margin-top:8px;font-size:13px;"></div>
       </div>
 
       <!-- Récap de la période -->

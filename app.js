@@ -657,6 +657,7 @@ async function renderEmployeeList() {
           <span class="emp-pin">PIN: ${emp.pin_code}</span>
           ${emp.hourly_rate ? `<span class="emp-pin">${emp.hourly_rate}FDJ/h</span>` : ''}
           ${emp.comptabilite_access ? `<span class="pill green" style="margin-left:6px;">Comptabilité</span>` : ''}
+          ${emp.caissier_access ? `<span class="pill green" style="margin-left:6px;">Caissier</span>` : ''}
         </div>
         <div class="emp-actions">
           <button onclick="openHistoryModal('${emp.id}')">Historique</button>
@@ -700,6 +701,7 @@ function openEmployeeModal(empId) {
     document.getElementById("employeeModalPin").value = emp.pin_code;
     document.getElementById("employeeModalRate").value = emp.hourly_rate || "";
     document.getElementById("employeeModalComptabilite").checked = !!emp.comptabilite_access;
+    document.getElementById("employeeModalCaissier").checked = !!emp.caissier_access;
   } else {
     document.getElementById("employeeModalTitle").textContent = "Ajouter un employé";
     document.getElementById("employeeModalId").value = "";
@@ -707,6 +709,7 @@ function openEmployeeModal(empId) {
     document.getElementById("employeeModalPin").value = "";
     document.getElementById("employeeModalRate").value = "";
     document.getElementById("employeeModalComptabilite").checked = false;
+    document.getElementById("employeeModalCaissier").checked = false;
   }
 }
 function closeEmployeeModal() {
@@ -718,6 +721,7 @@ async function saveEmployee() {
   const pin = document.getElementById("employeeModalPin").value.trim();
   const rate = document.getElementById("employeeModalRate").value;
   const compta = document.getElementById("employeeModalComptabilite").checked;
+  const caissier = document.getElementById("employeeModalCaissier").checked;
   if (!name || !/^\d{4}$/.test(pin)) {
     alert("Merci de renseigner un nom et un code PIN à 4 chiffres.");
     return;
@@ -726,7 +730,8 @@ async function saveEmployee() {
     full_name: name,
     pin_code: pin,
     hourly_rate: rate ? parseFloat(rate) : null,
-    comptabilite_access: compta
+    comptabilite_access: compta,
+    caissier_access: caissier
   };
   if (id) {
     const { error } = await sb.from("employees").update(payload).eq("id", id);
@@ -1453,6 +1458,126 @@ async function saveManualLog() {
 }
 
 // ============================================
+// CHECKLIST CAISSIER
+// ============================================
+const CHECKLIST_DATA = {
+  arrivee: [
+    "Nettoyer les vitres (aucune trace)",
+    "Allumer la télé",
+    "Allumer les LEDs",
+    "Compter la caisse et l'ouverture",
+    "Nettoyer le sol",
+    "Vérifier que la terrasse est propre (tables et chaises)",
+    "Publier en story les affiches Shakpot sur Snap et WhatsApp"
+  ],
+  service: [
+    "Récupérer les commandes",
+    "Lancer les Kikidrop après 10 min",
+    "Lancer dans le groupe des livreurs pour voir qui est dispo",
+    "En cas de litige livreur : fermer la fenêtre et changer de livreur",
+    "Récupérer les feuilles des courses et les classer par jour dans le porte-vues",
+    "Agrafer toutes les courses achetées pendant la soirée",
+    "Nettoyer l'extérieur régulièrement après le départ des clients",
+    "Vers 20h, lancer la préparation du poulet du lendemain",
+    "Si livreur absent : prévenir Kikidrop et Limo que la commande va refroidir",
+    "Vérifier le compte des commandes à 250 FDJ (combien garder / donner au livreur)",
+    "Avertir si livreur en retard de plus de 15 min + m'avertir",
+    "Ne pas répondre aux appels Kikidrop — répondre par message dans le groupe",
+    "Écrire toutes les charges",
+    "Commande annulée = Remboursement dans le système"
+  ],
+  fermetureCompta: [
+    "Compter les charges",
+    "Mettre 1% du CA en bas pour la sadaqa",
+    "Mettre à jour les crédits non payés dans le cahier crédits",
+    "Imprimer le ticket, le mettre en bas de la caisse, faire commande annulée et agrafer par personne",
+    "Mettre à jour la sadaqa et les boissons dans le cahier",
+    "Mettre de côté l'argent des commandes Kikidrop après minuit",
+    "Kikidrop : montant × 1.18 → mettre dans le système",
+    "Limo : calculer le montant, l'annoncer dans le groupe Limo et l'ajouter au système",
+    "Compter le cash, WAAFI, CAC, D-MONEY",
+    "Vérifier les écarts et les identifier"
+  ],
+  fermetureCaisse: [
+    "Laisser 1 500 FDJ taxi (2 000 FDJ si Hodan ou Balbala) → à ajouter dans les charges",
+    "Laisser 2 000 FDJ pour les boissons → à ajouter dans les charges et mettre en bas",
+    "Laisser un fond de caisse avant de fermer (sauf commande Kikidrop après minuit → rien)",
+    "Fermer la caisse et rouvrir avec le montant réel (si rien → 1 FDJ)"
+  ],
+  fermetureFin: [
+    "Éteindre la télé et remettre sa housse",
+    "Appeler le taxi"
+  ]
+};
+
+function getChecklistStorageKey() {
+  return `shakpot_checklist_${fmtDate(new Date())}`;
+}
+
+function loadChecklistState() {
+  try {
+    const saved = localStorage.getItem(getChecklistStorageKey());
+    return saved ? JSON.parse(saved) : {};
+  } catch(e) { return {}; }
+}
+
+function saveChecklistState(state) {
+  try {
+    // Nettoie les anciennes entrées (garde seulement aujourd'hui et hier)
+    const today = fmtDate(new Date());
+    for (let key of Object.keys(localStorage)) {
+      if (key.startsWith("shakpot_checklist_") && !key.includes(today)) {
+        localStorage.removeItem(key);
+      }
+    }
+    localStorage.setItem(getChecklistStorageKey(), JSON.stringify(state));
+  } catch(e) {}
+}
+
+function renderChecklist() {
+  const state = loadChecklistState();
+
+  function buildSection(containerId, items, prefix) {
+    const el = document.getElementById(containerId);
+    if (!el) return;
+    el.innerHTML = items.map((item, i) => {
+      const key = `${prefix}_${i}`;
+      const checked = !!state[key];
+      return `<label style="display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--rose-light);cursor:pointer;">
+        <input type="checkbox" ${checked ? 'checked' : ''} 
+          style="width:18px;height:18px;flex-shrink:0;margin-top:2px;accent-color:var(--bordeaux);"
+          onchange="toggleChecklistItem('${key}', this.checked)">
+        <span style="${checked ? 'text-decoration:line-through;color:var(--gray);' : ''}">${item}</span>
+      </label>`;
+    }).join("");
+  }
+
+  buildSection("checklist-arrivee", CHECKLIST_DATA.arrivee, "arrivee");
+  buildSection("checklist-service", CHECKLIST_DATA.service, "service");
+  buildSection("checklist-fermeture-compta", CHECKLIST_DATA.fermetureCompta, "fermetureCompta");
+  buildSection("checklist-fermeture-caisse", CHECKLIST_DATA.fermetureCaisse, "fermetureCaisse");
+  buildSection("checklist-fermeture-fin", CHECKLIST_DATA.fermetureFin, "fermetureFin");
+}
+
+function toggleChecklistItem(key, checked) {
+  const state = loadChecklistState();
+  state[key] = checked;
+  saveChecklistState(state);
+  // Met à jour visuellement le texte barré sans re-render complet
+  const label = event.target.closest("label");
+  if (label) {
+    const span = label.querySelector("span");
+    if (span) span.style.cssText = checked ? "text-decoration:line-through;color:var(--gray);" : "";
+  }
+}
+
+function resetChecklist() {
+  if (!confirm("Tout décocher ? La checklist repart à zéro.")) return;
+  saveChecklistState({});
+  renderChecklist();
+}
+
+// ============================================
 // MY SPACE (employé connecté, lecture seule)
 // ============================================
 let myspaceEmployee = null;
@@ -1527,6 +1652,14 @@ function myspaceCheckPin() {
       initMyspaceAccounting();
     } else {
       accountingSection.style.display = "none";
+    }
+    // Affiche la checklist caissier si l'employé a ce rôle
+    const caissierSection = document.getElementById("myspaceCaissierSection");
+    if (myspaceEmployee.caissier_access) {
+      caissierSection.style.display = "block";
+      renderChecklist();
+    } else {
+      caissierSection.style.display = "none";
     }
   } else {
     document.getElementById("myspacePinError").style.display = "block";

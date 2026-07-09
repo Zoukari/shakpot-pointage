@@ -713,6 +713,41 @@ td.today-col.emp-col{ background: var(--rose-light) !important; color: var(--bor
         </div>
       </div>
 
+      <!-- Section checklist caissier (visible uniquement si rôle caissier) -->
+      <div id="myspaceCaissierSection" style="display:none;">
+        <h2 style="color:var(--bordeaux-dark);margin-top:8px;">📋 Checklist du soir</h2>
+
+        <div class="card">
+          <h3 style="margin-top:0;">🌅 À l'arrivée</h3>
+          <div id="checklist-arrivee"></div>
+        </div>
+
+        <div class="card">
+          <h3 style="margin-top:0;">🍔 Pendant le service</h3>
+          <div id="checklist-service"></div>
+        </div>
+
+        <div class="card">
+          <h3 style="margin-top:0;">🌙 À la fermeture</h3>
+          <div style="background:var(--rose-pale);border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:13px;color:var(--bordeaux-dark);">
+            <strong>Horaires limites :</strong><br>
+            • Plus de commandes Kikidrop à partir de <strong>1h</strong><br>
+            • Plus de commandes Limo à partir de <strong>12h30</strong><br>
+            • Plus de burgers à partir de <strong>12h30</strong><br>
+            • Plus de livraisons à partir de <strong>1h</strong> (sur place uniquement)<br>
+            • La compta commence à partir de <strong>12h30</strong>
+          </div>
+          <h4 style="color:var(--bordeaux-dark);margin:12px 0 8px;">Comptabilité</h4>
+          <div id="checklist-fermeture-compta"></div>
+          <h4 style="color:var(--bordeaux-dark);margin:12px 0 8px;">Mise en bas de caisse</h4>
+          <div id="checklist-fermeture-caisse"></div>
+          <h4 style="color:var(--bordeaux-dark);margin:12px 0 8px;">Dernières actions</h4>
+          <div id="checklist-fermeture-fin"></div>
+        </div>
+
+        <button class="btn secondary full" style="margin-top:8px;" onclick="resetChecklist()">🔄 Tout décocher</button>
+      </div>
+
       <!-- Section comptabilité (visible uniquement si l'employé a l'accès) -->
       <div id="myspaceAccountingSection" style="display:none;">
         <h2 style="color:var(--bordeaux-dark);margin-top:8px;">Saisie comptabilité</h2>
@@ -1072,6 +1107,10 @@ td.today-col.emp-col{ background: var(--rose-light) !important; color: var(--bor
     <label style="display:flex;align-items:center;gap:8px;margin-top:14px;">
       <input type="checkbox" id="employeeModalComptabilite" style="width:auto;">
       Accès à la saisie comptabilité
+    </label>
+    <label style="display:flex;align-items:center;gap:8px;margin-top:10px;">
+      <input type="checkbox" id="employeeModalCaissier" style="width:auto;">
+      Rôle caissier (accès à la checklist)
     </label>
     <div class="modal-actions">
       <button class="btn secondary full" onclick="closeEmployeeModal()">Annuler</button>

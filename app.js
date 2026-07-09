@@ -1995,9 +1995,10 @@ async function renderAccountingSummary() {
     const byDay = {};
     purchases.forEach(p => { if (!byDay[p.entry_date]) byDay[p.entry_date] = []; byDay[p.entry_date].push(p); });
     html += `<h4 style="color:var(--bordeaux-dark);margin:16px 0 8px;">🛒 Courses par jour</h4>`;
+    let dayIdx = 0;
     Object.entries(byDay).sort((a,b) => a[0].localeCompare(b[0])).forEach(([date, items]) => {
       const dayTotal = items.reduce((s, p) => s + parseFloat(p.amount), 0);
-      const did = "day_" + date.replace(/-/g,'_');
+      const did = "dayd" + (dayIdx++);
       html += `<div style="border:1px solid var(--rose-light);border-radius:10px;margin-bottom:8px;overflow:hidden;">
         <div style="background:var(--rose-pale);padding:10px 14px;font-weight:700;cursor:pointer;display:flex;justify-content:space-between;" onclick="toggleDayDetail('${did}')">
           <span>${date}</span><span>${dayTotal.toFixed(2)} FDJ ▾</span></div>
@@ -2030,7 +2031,7 @@ async function renderAccountingSummary() {
       html += `<tr><td>${d.entry_date}</td><td>${parseFloat(d.amount_given).toFixed(2)}</td><td>${parseFloat(d.amount_paid).toFixed(2)}</td>
         <td style="color:${diff>=0?'var(--green)':'var(--red-text)'};font-weight:700;">${diff>=0?'+':''}${diff.toFixed(2)} FDJ</td>
         <td>${d.note||'—'}</td>
-        <td><button onclick="deleteDebt('${d.id}')" style="border:none;background:var(--red-bg);color:var(--red-text);border-radius:8px;padding:4px 8px;cursor:pointer;">✕</button></td></tr>`;
+        <td style="white-space:nowrap;"><button onclick="editDebt('${d.id}')" style="border:1px solid var(--rose-light);background:transparent;border-radius:8px;padding:4px 8px;cursor:pointer;margin-right:4px;">✏</button><button onclick="deleteDebt('${d.id}')" style="border:none;background:var(--red-bg);color:var(--red-text);border-radius:8px;padding:4px 8px;cursor:pointer;">✕</button></td></tr>`;
     });
     html += `</table>`;
   }
@@ -2202,6 +2203,39 @@ async function submitMyspaceDay() {
 // ============================================
 // DETTE LIVREUR
 // ============================================
+function toggleDayDetail(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.style.display = el.style.display === "none" ? "block" : "none";
+}
+
+async function deleteDebt(id) {
+  if (!confirm("Supprimer cette dette livreur ?")) return;
+  const { error } = await sb.from("accounting_delivery_debts").delete().eq("id", id);
+  if (error) { alert("Erreur: " + error.message); return; }
+  showToast("✓ Dette supprimée");
+  loadAccountingDay();
+  renderAccountingSummary();
+}
+
+async function editDebt(id) {
+  const { data, error } = await sb.from("accounting_delivery_debts").select("*").eq("id", id).single();
+  if (error) { alert("Erreur: " + error.message); return; }
+  const newGiven = prompt("Montant donné au livreur (FDJ) :", data.amount_given);
+  if (newGiven === null) return;
+  const newPaid = prompt("Montant payé par le livreur (FDJ) :", data.amount_paid);
+  if (newPaid === null) return;
+  const newNote = prompt("Note (optionnel) :", data.note || "");
+  const { error: updateError } = await sb.from("accounting_delivery_debts").update({
+    amount_given: parseFloat(newGiven) || 0,
+    amount_paid: parseFloat(newPaid) || 0,
+    note: newNote || null
+  }).eq("id", id);
+  if (updateError) { alert("Erreur: " + updateError.message); return; }
+  showToast("✓ Dette modifiée");
+  loadAccountingDay();
+  renderAccountingSummary();
+}
 function updateDebtPreview() {
   const given = parseFloat(document.getElementById("debtGiven").value) || 0;
   const paid = parseFloat(document.getElementById("debtPaid").value) || 0;

@@ -2082,8 +2082,11 @@ async function renderAccountingSummary() {
   const totalCA = revenues.reduce((s, r) => s + parseFloat(r.amount), 0);
   const totalPurchases = purchases.reduce((s, p) => s + parseFloat(p.amount), 0);
   const totalCharges = charges.reduce((s, c) => s + parseFloat(c.amount), 0);
+  // Solde livreur : donné - payé
+  // Si positif → il nous rend de l'argent (il a dépensé moins qu'on lui a donné) → s'ajoute au bénéfice
+  // Si négatif → il a dépensé plus qu'on lui a donné → on lui doit → s'ajoute aux charges
   const totalDebtNet = debts.reduce((s, d) => s + (parseFloat(d.amount_given) - parseFloat(d.amount_paid)), 0);
-  const netProfit = totalCA - totalPurchases - totalCharges - Math.max(0, totalDebtNet);
+  const netProfit = totalCA + Math.max(0, totalDebtNet) - totalPurchases - totalCharges - Math.max(0, -totalDebtNet);
   const chargeTypeLabels = { loyer:"Loyer", gaz:"Gaz", electricite:"Électricité", credit:"Crédit", salaire:"Salaire", autre:"Autre" };
 
   const monthStart = new Date(start.getFullYear(), start.getMonth(), 1);
@@ -2107,7 +2110,7 @@ async function renderAccountingSummary() {
       <div style="font-size:22px;font-weight:800;color:var(--red-text);">${totalCharges.toFixed(2)} FDJ</div></div>
     ${debts.length > 0 ? `<div style="background:var(--rose-pale);border-radius:12px;padding:16px;text-align:center;">
       <div style="font-size:12px;color:var(--bordeaux);font-weight:700;">🚚 Livreur</div>
-      <div style="font-size:22px;font-weight:800;color:${totalDebtNet > 0 ? 'var(--red-text)' : 'var(--green)'};">${totalDebtNet >= 0 ? '-' : '+'}${Math.abs(totalDebtNet).toFixed(2)} FDJ</div></div>` : ''}
+      <div style="font-size:22px;font-weight:800;color:${totalDebtNet >= 0 ? 'var(--green)' : 'var(--red-text)'};">${totalDebtNet >= 0 ? '+' : ''}${totalDebtNet.toFixed(2)} FDJ</div></div>` : ''}
     <div style="background:${netProfit >= 0 ? 'var(--green-bg)' : 'var(--red-bg)'};border-radius:12px;padding:16px;text-align:center;grid-column:1/-1;">
       <div style="font-size:13px;color:${netProfit >= 0 ? 'var(--green)' : 'var(--red-text)'};font-weight:700;">💰 Bénéfice net</div>
       <div style="font-size:34px;font-weight:800;color:${netProfit >= 0 ? 'var(--green)' : 'var(--red-text)'};">${netProfit >= 0 ? '+' : ''}${netProfit.toFixed(2)} FDJ</div>
@@ -2160,7 +2163,7 @@ async function renderAccountingSummary() {
   if (debts.length > 0) {
     html += `<h4 style="color:var(--bordeaux-dark);margin:16px 0 8px;">🚚 Dettes livreur</h4><table><tr><th>Date</th><th>Donné</th><th>Payé</th><th>Solde</th><th>Note</th><th></th></tr>`;
     debts.forEach(d => {
-      const diff = parseFloat(d.amount_paid) - parseFloat(d.amount_given);
+      const diff = parseFloat(d.amount_given) - parseFloat(d.amount_paid); // positif = il nous rend, négatif = on lui doit
       html += `<tr><td>${d.entry_date}</td><td>${parseFloat(d.amount_given).toFixed(2)}</td><td>${parseFloat(d.amount_paid).toFixed(2)}</td>
         <td style="color:${diff>=0?'var(--green)':'var(--red-text)'};font-weight:700;">${diff>=0?'+':''}${diff.toFixed(2)} FDJ</td>
         <td>${d.note||'—'}</td>
@@ -2372,12 +2375,12 @@ async function editDebt(id) {
 function updateDebtPreview() {
   const given = parseFloat(document.getElementById("debtGiven").value) || 0;
   const paid = parseFloat(document.getElementById("debtPaid").value) || 0;
-  const diff = paid - given;
+  const diff = given - paid; // positif = il nous rend (donné > payé), négatif = on lui doit (payé > donné)
   const el = document.getElementById("debtPreview");
   if (given === 0 && paid === 0) { el.textContent = ""; return; }
   if (diff > 0) {
     el.style.color = "var(--green)";
-    el.textContent = `✓ Le livreur nous paye : +${diff.toFixed(2)} FDJ`;
+    el.textContent = `✓ Le livreur nous rend : +${diff.toFixed(2)} FDJ`;
   } else if (diff < 0) {
     el.style.color = "var(--red-text)";
     el.textContent = `⚠ On lui doit encore : ${Math.abs(diff).toFixed(2)} FDJ`;
@@ -2446,8 +2449,8 @@ async function loadMonthBalance() {
   const totalCA = (revenueRes.data || []).reduce((s, r) => s + parseFloat(r.amount), 0);
   const totalPurchases = (purchasesRes.data || []).reduce((s, p) => s + parseFloat(p.amount), 0);
   const totalCharges = (chargesRes.data || []).reduce((s, c) => s + parseFloat(c.amount), 0);
-  const totalDebt = (debtsRes.data || []).reduce((s, d) => s + (parseFloat(d.amount_paid) - parseFloat(d.amount_given)), 0);
-  const autoPrevBenefit = totalCA - totalPurchases - totalCharges - Math.max(0, -totalDebt);
+  const totalDebt = (debtsRes.data || []).reduce((s, d) => s + (parseFloat(d.amount_given) - parseFloat(d.amount_paid)), 0);
+  const autoPrevBenefit = totalCA + Math.max(0, totalDebt) - totalPurchases - totalCharges - Math.max(0, -totalDebt);
   document.getElementById("monthBalanceAutoAmount").textContent = autoPrevBenefit.toFixed(2) + " FDJ";
 
   // Récupère la saisie manuelle si elle existe

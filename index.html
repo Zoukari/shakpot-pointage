@@ -946,105 +946,73 @@ td.today-col.emp-col{ background: var(--rose-light) !important; color: var(--bor
     <!-- TAB: Accounting -->
     <div id="adminPanelAccounting" class="admin-panel">
 
-      <!-- Saisie du jour -->
+      <!-- Saisie unifiée -->
       <div class="card">
-        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
-          <h3 style="margin:0;">Saisie du jour</h3>
-          <div class="toolbar" style="margin:0;">
-            <label style="font-weight:700;font-size:14px;">Date :</label>
-            <input type="date" id="accountingDate" onchange="onAccountingDateChange()">
-          </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:16px;">
+          <h3 style="margin:0;">Saisie</h3>
+          <input type="date" id="accountingDate" onchange="onAccountingDateChange()" style="padding:10px;border-radius:8px;border:2px solid var(--rose-light);font-size:14px;">
         </div>
-        <div style="margin-top:18px;display:grid;grid-template-columns:1fr 1fr;gap:14px;">
-          <!-- CA -->
-          <div style="grid-column:1/-1;background:var(--green-bg);border-radius:12px;padding:16px;">
-            <div style="font-weight:800;color:var(--green);margin-bottom:8px;">📈 Chiffre d'affaires</div>
-            <div style="display:flex;gap:10px;align-items:center;">
-              <input type="number" id="caAmount" placeholder="Montant CA (FDJ)" step="0.01" style="flex:1;padding:10px;border-radius:8px;border:2px solid #b7dfc5;font-size:15px;">
-              <button class="btn" style="background:var(--green);" onclick="saveCA()">Enregistrer</button>
-            </div>
-            <div id="caStatus" style="font-size:13px;color:var(--gray);margin-top:6px;"></div>
-          </div>
-          <!-- Courses -->
-          <div style="grid-column:1/-1;">
-            <div style="font-weight:800;color:var(--bordeaux-dark);margin-bottom:10px;">🛒 Ajouter des courses</div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-              <input type="text" id="purchaseStore" placeholder="Nom du magasin" style="padding:10px;border-radius:8px;border:2px solid var(--rose-light);font-size:14px;">
-              <input type="number" id="purchaseAmount" placeholder="Montant (FDJ)" step="0.01" style="padding:10px;border-radius:8px;border:2px solid var(--rose-light);font-size:14px;">
-            </div>
-            <div style="margin-top:10px;border:2px dashed var(--rose-light);border-radius:10px;padding:12px;text-align:center;cursor:pointer;" onclick="document.getElementById('receiptPhotoInput').click()">
-              <div id="receiptPhotoPreview" style="color:var(--gray);font-size:13px;">📷 Appuyer pour prendre/choisir la photo de la facture</div>
-              <input type="file" id="receiptPhotoInput" accept="image/*" capture="environment" style="display:none;" onchange="previewReceiptPhoto(this)">
-            </div>
-            <button class="btn full" style="margin-top:10px;" onclick="savePurchase()">+ Ajouter ces courses</button>
-          </div>
-          <!-- Charges -->
-          <div style="grid-column:1/-1;">
-            <div style="font-weight:800;color:var(--bordeaux-dark);margin-bottom:10px;">💳 Ajouter une charge</div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-              <select id="chargeType" onchange="toggleChargeFields()" style="padding:10px;border-radius:8px;border:2px solid var(--rose-light);font-size:14px;">
-                <option value="loyer">Loyer</option>
-                <option value="gaz">Gaz</option>
-                <option value="electricite">Électricité</option>
-                <option value="credit">Crédit</option>
-                <option value="salaire">Salaire employé</option>
-                <option value="autre">Autre</option>
-              </select>
-              <input type="number" id="chargeAmount" placeholder="Montant (FDJ)" step="0.01" style="padding:10px;border-radius:8px;border:2px solid var(--rose-light);font-size:14px;">
-            </div>
-            <div id="chargeEmployeeRow" style="display:none;margin-top:10px;">
-              <select id="chargeEmployee" style="width:100%;padding:10px;border-radius:8px;border:2px solid var(--rose-light);font-size:14px;" onchange="onChargeEmployeeChange()"></select>
-              <div id="chargeAutoCalcInfo" style="font-size:12px;color:var(--gray);margin-top:4px;"></div>
-            </div>
-            <div id="chargeAutreRow" style="display:none;margin-top:10px;">
-              <input type="text" id="chargeLabel" placeholder="Description de la charge" style="width:100%;padding:10px;border-radius:8px;border:2px solid var(--rose-light);font-size:14px;">
-            </div>
-            <button class="btn full" style="margin-top:10px;" onclick="saveCharge()">+ Ajouter cette charge</button>
-          </div>
-
-          <!-- Dette livreur -->
-          <div style="margin-top:18px;grid-column:1/-1;">
-            <div style="font-weight:800;color:var(--bordeaux-dark);margin-bottom:10px;">🚚 Livreur — montant donné</div>
-            <div style="background:var(--rose-pale);border-radius:10px;padding:10px;font-size:13px;color:var(--gray);margin-bottom:8px;">
-              Le montant <strong>Payé</strong> est calculé automatiquement depuis les courses du jour.
-            </div>
-            <input type="number" id="debtGiven" placeholder="Montant donné au livreur (FDJ)" step="0.01" style="width:100%;padding:10px;border-radius:8px;border:2px solid var(--rose-light);font-size:14px;margin-bottom:8px;">
-            <input type="text" id="debtNote" placeholder="Note (optionnel)" style="width:100%;padding:10px;border-radius:8px;border:2px solid var(--rose-light);font-size:14px;margin-bottom:8px;">
-            <button class="btn full" onclick="saveDebt()">+ Enregistrer</button>
-          </div>
-
-          <!-- Annexe dette livreur -->
-          <div style="margin-top:14px;grid-column:1/-1;">
-            <div style="font-weight:800;color:var(--bordeaux-dark);margin-bottom:10px;">📎 Annexe livreur</div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-              <input type="date" id="debtAnnexDate" style="padding:10px;border-radius:8px;border:2px solid var(--rose-light);font-size:14px;">
-              <input type="number" id="debtAnnexAmount" placeholder="Montant (FDJ)" step="0.01" style="padding:10px;border-radius:8px;border:2px solid var(--rose-light);font-size:14px;">
-            </div>
-            <input type="text" id="debtAnnexMotif" placeholder="Motif (ex: avance, remboursement...)" style="width:100%;padding:10px;border-radius:8px;border:2px solid var(--rose-light);font-size:14px;margin-top:8px;">
-            <button class="btn secondary full" style="margin-top:8px;" onclick="saveDebtAnnex()">+ Ajouter annexe</button>
-          </div>
+        <select id="accountingEntryType" onchange="toggleAccountingEntryType()" style="width:100%;padding:12px;border-radius:10px;border:2px solid var(--bordeaux);font-size:15px;font-weight:700;color:var(--bordeaux-dark);margin-bottom:14px;">
+          <option value="">— Que voulez-vous saisir ? —</option>
+          <option value="ca">📈 CA du jour (recette)</option>
+          <option value="charge">💳 Charge (loyer, gaz, salaire...)</option>
+          <option value="course">🛒 Course (achat magasin)</option>
+          <option value="balance">💵 Argent du mois précédent</option>
+          <option value="debt">🚚 Montant donné au livreur</option>
+        </select>
+        <div id="entryCA" style="display:none;">
+          <input type="number" id="caAmount" placeholder="Montant CA (FDJ)" step="0.01" style="width:100%;padding:12px;border-radius:10px;border:2px solid var(--rose-light);font-size:15px;margin-bottom:8px;">
+          <button class="btn full" style="background:var(--green);" onclick="saveCA()">✓ Enregistrer le CA</button>
+          <div id="caStatus" style="font-size:13px;color:var(--gray);margin-top:6px;"></div>
         </div>
-      </div>
-
-      <!-- Argent du mois -->
-      <div class="card" id="monthBalanceCard">
-        <h3>💵 Argent du mois</h3>
-        <p style="color:var(--gray);font-size:13px;margin-top:0;">Solde de départ du mois sélectionné = bénéfice net du mois précédent. Saisie manuelle possible si nécessaire.</p>
-        <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
-          <div id="monthBalanceAuto" style="flex:1;background:var(--rose-pale);border-radius:10px;padding:14px;text-align:center;">
+        <div id="entryCharge" style="display:none;">
+          <select id="chargeType" onchange="toggleChargeFields()" style="width:100%;padding:12px;border-radius:10px;border:2px solid var(--rose-light);font-size:14px;margin-bottom:8px;">
+            <option value="loyer">Loyer</option>
+            <option value="gaz">Gaz</option>
+            <option value="electricite">Électricité</option>
+            <option value="credit">Crédit</option>
+            <option value="salaire">Salaire employé</option>
+            <option value="autre">Autre</option>
+          </select>
+          <div id="chargeEmployeeRow" style="display:none;margin-bottom:8px;">
+            <select id="chargeEmployee" style="width:100%;padding:10px;border-radius:8px;border:2px solid var(--rose-light);font-size:14px;" onchange="onChargeEmployeeChange()"></select>
+            <div id="chargeAutoCalcInfo" style="font-size:12px;color:var(--gray);margin-top:4px;"></div>
+          </div>
+          <div id="chargeAutreRow" style="display:none;margin-bottom:8px;">
+            <input type="text" id="chargeLabel" placeholder="Description" style="width:100%;padding:10px;border-radius:8px;border:2px solid var(--rose-light);font-size:14px;">
+          </div>
+          <input type="number" id="chargeAmount" placeholder="Montant (FDJ)" step="0.01" style="width:100%;padding:12px;border-radius:10px;border:2px solid var(--rose-light);font-size:15px;margin-bottom:8px;">
+          <button class="btn full" onclick="saveCharge()">✓ Enregistrer la charge</button>
+        </div>
+        <div id="entryCourse" style="display:none;">
+          <input type="text" id="purchaseStore" placeholder="Nom du magasin" style="width:100%;padding:12px;border-radius:10px;border:2px solid var(--rose-light);font-size:14px;margin-bottom:8px;">
+          <input type="number" id="purchaseAmount" placeholder="Montant (FDJ)" step="0.01" style="width:100%;padding:12px;border-radius:10px;border:2px solid var(--rose-light);font-size:15px;margin-bottom:8px;">
+          <div style="border:2px dashed var(--rose-light);border-radius:10px;padding:12px;text-align:center;cursor:pointer;margin-bottom:8px;" onclick="document.getElementById('receiptPhotoInput').click()">
+            <div id="receiptPhotoPreview" style="color:var(--gray);font-size:13px;">📷 Photo de la facture (optionnel)</div>
+            <input type="file" id="receiptPhotoInput" accept="image/*" capture="environment" style="display:none;" onchange="previewReceiptPhoto(this)">
+          </div>
+          <button class="btn full" onclick="savePurchase()">✓ Enregistrer la course</button>
+        </div>
+        <div id="entryBalance" style="display:none;">
+          <div style="background:var(--rose-pale);border-radius:10px;padding:12px;margin-bottom:10px;">
             <div style="font-size:12px;color:var(--gray);margin-bottom:4px;">Calculé automatiquement (bénéfice M-1)</div>
-            <div id="monthBalanceAutoAmount" style="font-size:22px;font-weight:800;color:var(--bordeaux-dark);">—</div>
+            <div id="monthBalanceAutoAmount" style="font-size:20px;font-weight:800;color:var(--bordeaux-dark);">—</div>
           </div>
-          <div style="flex:1;">
-            <label style="font-size:13px;font-weight:700;color:var(--gray);display:block;margin-bottom:6px;">Correction manuelle (optionnel)</label>
-            <input type="number" id="monthBalanceManual" placeholder="Saisir si différent" step="0.01" style="width:100%;padding:10px;border-radius:8px;border:2px solid var(--rose-light);font-size:14px;">
-            <button class="btn full" style="margin-top:8px;" onclick="saveMonthBalance()">Enregistrer</button>
-          </div>
+          <input type="number" id="monthBalanceManual" placeholder="Correction manuelle si nécessaire (FDJ)" step="0.01" style="width:100%;padding:12px;border-radius:10px;border:2px solid var(--rose-light);font-size:14px;margin-bottom:8px;">
+          <button class="btn full" onclick="saveMonthBalance()">✓ Enregistrer</button>
+          <div id="monthBalanceMsg" style="margin-top:6px;font-size:13px;"></div>
         </div>
-        <div id="monthBalanceMsg" style="margin-top:8px;font-size:13px;"></div>
+        <div id="entryDebt" style="display:none;">
+          <div style="background:var(--rose-pale);border-radius:10px;padding:10px;font-size:13px;color:var(--gray);margin-bottom:8px;">
+            Les <strong>Courses</strong> sont calculées automatiquement depuis les courses saisies ce jour.
+          </div>
+          <input type="number" id="debtGiven" placeholder="Montant donné au livreur (FDJ)" step="0.01" style="width:100%;padding:12px;border-radius:10px;border:2px solid var(--rose-light);font-size:15px;margin-bottom:8px;">
+          <input type="text" id="debtNote" placeholder="Note (optionnel)" style="width:100%;padding:10px;border-radius:8px;border:2px solid var(--rose-light);font-size:14px;margin-bottom:8px;">
+          <button class="btn full" onclick="saveDebt()">✓ Enregistrer</button>
+        </div>
       </div>
 
-      <!-- Récap de la période -->
+      <!-- Récap période -->
       <div class="card">
         <div class="toolbar">
           <label style="font-weight:700;font-size:14px;">Période :</label>

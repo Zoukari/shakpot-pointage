@@ -1655,12 +1655,27 @@ function myspaceCheckPin() {
   if (myspacePinBuffer === myspaceEmployee.pin_code) {
     document.getElementById("myspaceLogin").style.display = "none";
     document.getElementById("myspaceDashboard").style.display = "block";
-    document.getElementById("myspaceTitle").textContent = `Salut ${myspaceEmployee.full_name} 👋`;
     document.getElementById("myspaceHoursPeriodDate").value = fmtDate(new Date());
-    renderMyspaceSchedule();
-    renderMyspaceHours();
-    renderMyspaceLogs();
-    // Affiche la section comptabilité si l'employé y a accès
+
+    const isLivreur = !!myspaceEmployee.comptabilite_access && !myspaceEmployee.caissier_access;
+    // Si c'est le livreur (comptabilite_access mais pas caissier) : masquer planning/heures/pointages
+    const hideSections = myspaceEmployee.comptabilite_access;
+    document.getElementById("myspacePlanningCard").style.display = hideSections ? "none" : "block";
+    document.getElementById("myspaceHeuresCard").style.display = hideSections ? "none" : "block";
+    document.getElementById("myspacePointagesCard").style.display = hideSections ? "none" : "block";
+
+    if (!hideSections) {
+      document.getElementById("myspaceTitle").textContent = `Salut ${myspaceEmployee.full_name} 👋`;
+      document.getElementById("myspaceSubtitle").textContent = "Ton planning, tes heures et tes pointages — lecture seule";
+      renderMyspaceSchedule();
+      renderMyspaceHours();
+      renderMyspaceLogs();
+    } else {
+      document.getElementById("myspaceTitle").textContent = `Salut ${myspaceEmployee.full_name} 👋`;
+      document.getElementById("myspaceSubtitle").textContent = "Tes courses et ton solde";
+    }
+
+    // Affiche la section comptabilité (livreur)
     const accountingSection = document.getElementById("myspaceAccountingSection");
     if (myspaceEmployee.comptabilite_access) {
       accountingSection.style.display = "block";
@@ -2347,16 +2362,71 @@ async function editCharge(id, date, currentAmount) {
 async function initMyspaceAccounting() {
   const today = fmtDate(new Date());
   document.getElementById("myspaceAccountingDate").value = today;
-  // Peupler le sélecteur employés pour les charges
-  const sel = document.getElementById("myspaceChargeEmployee");
-  if (sel) sel.innerHTML = employees.map(e => `<option value="${e.id}">${e.full_name}</option>`).join("");
+  document.getElementById("myspaceDebtPeriodDate").value = today;
   loadMyspaceAccountingDay();
+  renderMyspaceDebtSummary();
 }
 
-function toggleMyspaceChargeFields() {
-  const type = document.getElementById("myspaceChargeType").value;
-  document.getElementById("myspaceChargeEmployeeRow").style.display = type === "salaire" ? "block" : "none";
-  document.getElementById("myspaceChargeAutreRow").style.display = type === "autre" ? "block" : "none";
+async function renderMyspaceDebtSummary() {
+  const { start, end } = getPeriodRangeFor("myspaceDebtPeriodType", "myspaceDebtPeriodDate");
+  const startStr = fmtDate(start), endStr = fmtDate(end);
+
+  const [purchasesRes, debtsRes] = await Promise.all([
+    sb.from("accounting_purchases").select("*").gte("entry_date", startStr).lt("entry_date", endStr).order("entry_date").order("created_at"),
+    sb.from("accounting_delivery_debts").select("*").gte("entry_date", startStr).lt("entry_date", endStr).order("entry_date")
+  ]);
+
+  const purchases = purchasesRes.data || [];
+  const debts = debtsRes.data || [];
+  const el = document.getElementById("myspaceDebtTable");
+
+  if (purchases.length === 0 && debts.length === 0) {
+    el.innerHTML = `<div style="text-align:center;color:var(--gray);padding:16px;">Aucune donnée pour cette période.</div>`;
+    return;
+  }
+
+  // Grouper par jour
+  const days = new Set([...purchases.map(p => p.entry_date), ...debts.map(d => d.entry_date)]);
+  const purchasesByDay = {};
+  purchases.forEach(p => { if (!purchasesByDay[p.entry_date]) purchasesByDay[p.entry_date] = []; purchasesByDay[p.entry_date].push(p); });
+  const debtByDay = {};
+  debts.forEach(d => { debtByDay[d.entry_date] = d; });
+
+  let html = "";
+  let totalGiven = 0, totalCourses = 0;
+
+  [...days].sort().forEach(date => {
+    const dayPurchases = purchasesByDay[date] || [];
+    const debt = debtByDay[date];
+    const dayTotal = dayPurchases.reduce((s, p) => s + parseFloat(p.amount), 0);
+    const given = debt ? parseFloat(debt.amount_given) : 0;
+    const solde = given - dayTotal;
+    totalGiven += given;
+    totalCourses += dayTotal;
+
+    html += `<div style="border:1px solid var(--rose-light);border-radius:10px;margin-bottom:8px;overflow:hidden;">
+      <div style="background:var(--rose-pale);padding:10px 14px;display:flex;justify-content:space-between;align-items:center;">
+        <strong>${date}</strong>
+        <span style="color:${solde >= 0 ? 'var(--green)' : 'var(--red-text)'};font-weight:700;">${solde >= 0 ? '+' : ''}${solde.toFixed(0)} FDJ</span>
+      </div>
+      <div style="padding:10px 14px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;font-size:13px;">
+          <div>💵 Reçu : <strong>${given.toFixed(0)} FDJ</strong></div>
+          <div>🛒 Dépensé : <strong style="color:var(--red-text);">${dayTotal.toFixed(0)} FDJ</strong></div>
+        </div>
+        ${dayPurchases.map(p => `<div style="font-size:12px;color:var(--gray);padding:2px 0;">${p.store_name} — ${parseFloat(p.amount).toFixed(0)} FDJ</div>`).join("")}
+      </div>
+    </div>`;
+  });
+
+  const soldeTotal = totalGiven - totalCourses;
+  html = `<div style="background:${soldeTotal >= 0 ? 'var(--green-bg)' : 'var(--red-bg)'};border-radius:12px;padding:14px;text-align:center;margin-bottom:14px;">
+    <div style="font-size:12px;color:var(--gray);font-weight:700;margin-bottom:4px;">Solde total de la période</div>
+    <div style="font-size:26px;font-weight:800;color:${soldeTotal >= 0 ? 'var(--green)' : 'var(--red-text)'};">${soldeTotal >= 0 ? '+' : ''}${soldeTotal.toFixed(0)} FDJ</div>
+    <div style="font-size:12px;color:var(--gray);margin-top:2px;">${soldeTotal >= 0 ? '✓ Je dois rendre ce montant' : '⚠ Je suis en déficit'}</div>
+  </div>` + html;
+
+  el.innerHTML = html;
 }
 
 async function loadMyspaceAccountingDay() {

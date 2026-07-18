@@ -2082,12 +2082,20 @@ async function renderAccountingSummary() {
   const totalCA = revenues.reduce((s, r) => s + parseFloat(r.amount), 0);
   const totalPurchases = purchases.reduce((s, p) => s + parseFloat(p.amount), 0);
   const totalCharges = charges.reduce((s, c) => s + parseFloat(c.amount), 0);
-  // Solde livreur : donné - payé
-  // Si positif → il nous rend de l'argent (il a dépensé moins qu'on lui a donné) → s'ajoute au bénéfice
-  // Si négatif → il a dépensé plus qu'on lui a donné → on lui doit → s'ajoute aux charges
-  const totalDebtNet = debts.reduce((s, d) => s + (parseFloat(d.amount_given) - parseFloat(d.amount_paid)), 0);
-  const netProfit = totalCA + Math.max(0, totalDebtNet) - totalPurchases - totalCharges - Math.max(0, -totalDebtNet);
   const chargeTypeLabels = { loyer:"Loyer", gaz:"Gaz", electricite:"Électricité", credit:"Crédit", salaire:"Salaire", autre:"Autre" };
+
+  // Dette livreur : séparée du bénéfice net, c'est un suivi indépendant
+  // Solde période : donné - payé (positif = il nous rend, négatif = on lui doit)
+  const periodDebtNet = debts.reduce((s, d) => s + (parseFloat(d.amount_given) - parseFloat(d.amount_paid)), 0);
+
+  // Dette cumulée totale (depuis le début, toutes périodes confondues)
+  const { data: allDebts } = await sb.from("accounting_delivery_debts").select("amount_given,amount_paid");
+  const totalCumulatedDebt = (allDebts || []).reduce((s, d) => s + (parseFloat(d.amount_given) - parseFloat(d.amount_paid)), 0);
+  // totalCumulatedDebt positif = le livreur nous doit de l'argent
+  // totalCumulatedDebt négatif = on lui doit de l'argent
+
+  // Bénéfice net = CA - courses - charges (sans la dette livreur qui est un suivi séparé)
+  const netProfit = totalCA - totalPurchases - totalCharges;
 
   const monthStart = new Date(start.getFullYear(), start.getMonth(), 1);
   const monthStr = fmtDate(monthStart);
@@ -2108,14 +2116,28 @@ async function renderAccountingSummary() {
     <div style="background:var(--red-bg);border-radius:12px;padding:16px;text-align:center;">
       <div style="font-size:12px;color:var(--red-text);font-weight:700;">💳 Charges</div>
       <div style="font-size:22px;font-weight:800;color:var(--red-text);">${totalCharges.toFixed(2)} FDJ</div></div>
-    ${debts.length > 0 ? `<div style="background:var(--rose-pale);border-radius:12px;padding:16px;text-align:center;">
-      <div style="font-size:12px;color:var(--bordeaux);font-weight:700;">🚚 Livreur</div>
-      <div style="font-size:22px;font-weight:800;color:${totalDebtNet >= 0 ? 'var(--green)' : 'var(--red-text)'};">${totalDebtNet >= 0 ? '+' : ''}${totalDebtNet.toFixed(2)} FDJ</div></div>` : ''}
     <div style="background:${netProfit >= 0 ? 'var(--green-bg)' : 'var(--red-bg)'};border-radius:12px;padding:16px;text-align:center;grid-column:1/-1;">
       <div style="font-size:13px;color:${netProfit >= 0 ? 'var(--green)' : 'var(--red-text)'};font-weight:700;">💰 Bénéfice net</div>
       <div style="font-size:34px;font-weight:800;color:${netProfit >= 0 ? 'var(--green)' : 'var(--red-text)'};">${netProfit >= 0 ? '+' : ''}${netProfit.toFixed(2)} FDJ</div>
       ${monthBalance ? `<div style="font-size:13px;font-weight:700;color:var(--bordeaux-dark);margin-top:6px;">Total disponible : ${totalAvailable.toFixed(2)} FDJ</div>` : ''}
     </div></div>`;
+
+  // --- Compte livreur (section séparée) ---
+  html += `<div style="border:2px solid ${totalCumulatedDebt >= 0 ? 'var(--bordeaux)' : 'var(--red-text)'};border-radius:14px;padding:18px;margin-bottom:20px;">
+    <div style="font-weight:800;font-size:16px;color:var(--bordeaux-dark);margin-bottom:12px;">🚚 Compte livreur</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+      <div style="background:var(--rose-pale);border-radius:10px;padding:12px;text-align:center;">
+        <div style="font-size:12px;color:var(--gray);font-weight:700;">Solde cette période</div>
+        <div style="font-size:20px;font-weight:800;color:${periodDebtNet >= 0 ? 'var(--green)' : 'var(--red-text)'};">${periodDebtNet >= 0 ? '+' : ''}${periodDebtNet.toFixed(2)} FDJ</div>
+        <div style="font-size:11px;color:var(--gray);">${periodDebtNet >= 0 ? 'Il nous rend' : 'On lui doit'}</div>
+      </div>
+      <div style="background:${totalCumulatedDebt >= 0 ? 'var(--green-bg)' : 'var(--red-bg)'};border-radius:10px;padding:12px;text-align:center;">
+        <div style="font-size:12px;color:var(--gray);font-weight:700;">Dette cumulée totale</div>
+        <div style="font-size:20px;font-weight:800;color:${totalCumulatedDebt >= 0 ? 'var(--green)' : 'var(--red-text)'};">${totalCumulatedDebt >= 0 ? '+' : ''}${totalCumulatedDebt.toFixed(2)} FDJ</div>
+        <div style="font-size:11px;color:var(--gray);">${totalCumulatedDebt >= 0 ? '✓ Il nous doit au total' : '⚠ On lui doit au total'}</div>
+      </div>
+    </div>
+  </div>`;
 
   if (revenues.length > 0) {
     html += `<h4 style="color:var(--bordeaux-dark);margin-bottom:8px;">📈 CA par jour</h4><table><tr><th>Date</th><th>Montant</th><th></th></tr>`;
@@ -2440,17 +2462,16 @@ async function loadMonthBalance() {
   // Calcule le bénéfice net du mois précédent automatiquement
   const prevStartStr = fmtDate(prevMonthStart);
   const prevEndStr = fmtDate(prevMonthEnd);
-  const [purchasesRes, chargesRes, revenueRes, debtsRes] = await Promise.all([
+  const [purchasesRes, chargesRes, revenueRes] = await Promise.all([
     sb.from("accounting_purchases").select("amount").gte("entry_date", prevStartStr).lt("entry_date", prevEndStr),
     sb.from("accounting_charges").select("amount").gte("entry_date", prevStartStr).lt("entry_date", prevEndStr),
-    sb.from("accounting_revenue").select("amount").gte("entry_date", prevStartStr).lt("entry_date", prevEndStr),
-    sb.from("accounting_delivery_debts").select("amount_given,amount_paid").gte("entry_date", prevStartStr).lt("entry_date", prevEndStr)
+    sb.from("accounting_revenue").select("amount").gte("entry_date", prevStartStr).lt("entry_date", prevEndStr)
   ]);
   const totalCA = (revenueRes.data || []).reduce((s, r) => s + parseFloat(r.amount), 0);
   const totalPurchases = (purchasesRes.data || []).reduce((s, p) => s + parseFloat(p.amount), 0);
   const totalCharges = (chargesRes.data || []).reduce((s, c) => s + parseFloat(c.amount), 0);
-  const totalDebt = (debtsRes.data || []).reduce((s, d) => s + (parseFloat(d.amount_given) - parseFloat(d.amount_paid)), 0);
-  const autoPrevBenefit = totalCA + Math.max(0, totalDebt) - totalPurchases - totalCharges - Math.max(0, -totalDebt);
+  // Bénéfice M-1 = CA - courses - charges (dette livreur exclue, c'est un suivi séparé)
+  const autoPrevBenefit = totalCA - totalPurchases - totalCharges;
   document.getElementById("monthBalanceAutoAmount").textContent = autoPrevBenefit.toFixed(2) + " FDJ";
 
   // Récupère la saisie manuelle si elle existe

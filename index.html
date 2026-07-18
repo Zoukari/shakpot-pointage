@@ -750,64 +750,42 @@ td.today-col.emp-col{ background: var(--rose-light) !important; color: var(--bor
 
       <!-- Section comptabilité (visible uniquement si l'employé a l'accès) -->
       <div id="myspaceAccountingSection" style="display:none;">
-        <h2 style="color:var(--bordeaux-dark);margin-top:8px;">Saisie comptabilité</h2>
+        <h2 style="color:var(--bordeaux-dark);margin-top:8px;">🚚 Mes courses</h2>
 
-        <!-- Formulaire de saisie libre (pas de verrou) -->
         <div id="myspaceAccountingForm" class="card">
-          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:16px;">
             <h3 style="margin:0;">Saisie du jour</h3>
             <input type="date" id="myspaceAccountingDate" onchange="loadMyspaceAccountingDay()" style="padding:10px;border-radius:8px;border:2px solid var(--rose-light);font-size:14px;">
           </div>
 
+          <!-- Montant donné -->
+          <div style="margin-bottom:16px;">
+            <div style="font-weight:800;color:var(--bordeaux-dark);margin-bottom:8px;">💵 Argent reçu</div>
+            <input type="number" id="myspaceDebtGiven" placeholder="Montant reçu pour les courses (FDJ)" step="0.01" style="width:100%;padding:12px;border-radius:10px;border:2px solid var(--rose-light);font-size:15px;margin-bottom:8px;">
+            <button class="btn full" onclick="saveMyspaceDebt()">✓ Enregistrer</button>
+          </div>
+
           <!-- Courses -->
-          <div style="margin-top:18px;">
-            <div style="font-weight:800;color:var(--bordeaux-dark);margin-bottom:10px;">🛒 Courses</div>
-            <input type="text" id="myspacePurchaseStore" placeholder="Nom du magasin" style="width:100%;padding:10px;border-radius:8px;border:2px solid var(--rose-light);font-size:14px;margin-bottom:8px;">
-            <input type="number" id="myspacePurchaseAmount" placeholder="Montant (FDJ)" step="0.01" style="width:100%;padding:10px;border-radius:8px;border:2px solid var(--rose-light);font-size:14px;margin-bottom:8px;">
-            <div style="border:2px dashed var(--rose-light);border-radius:10px;padding:12px;text-align:center;cursor:pointer;" onclick="document.getElementById('myspaceReceiptInput').click()">
+          <div>
+            <div style="font-weight:800;color:var(--bordeaux-dark);margin-bottom:8px;">🛒 Ajouter une course</div>
+            <input type="text" id="myspacePurchaseStore" placeholder="Nom du magasin" style="width:100%;padding:12px;border-radius:10px;border:2px solid var(--rose-light);font-size:14px;margin-bottom:8px;">
+            <input type="number" id="myspacePurchaseAmount" placeholder="Montant (FDJ)" step="0.01" style="width:100%;padding:12px;border-radius:10px;border:2px solid var(--rose-light);font-size:15px;margin-bottom:8px;">
+            <div style="border:2px dashed var(--rose-light);border-radius:10px;padding:12px;text-align:center;cursor:pointer;margin-bottom:8px;" onclick="document.getElementById('myspaceReceiptInput').click()">
               <div id="myspaceReceiptPreview" style="color:var(--gray);font-size:13px;">📷 Photo de la facture (optionnel)</div>
               <input type="file" id="myspaceReceiptInput" accept="image/*" capture="environment" style="display:none;" onchange="previewMyspaceReceipt(this)">
             </div>
-            <button class="btn full" style="margin-top:10px;" onclick="saveMyspacePurchase()">+ Enregistrer</button>
+            <button class="btn full" onclick="saveMyspacePurchase()">+ Ajouter</button>
           </div>
 
-          <!-- Charges -->
-          <div style="margin-top:18px;">
-            <div style="font-weight:800;color:var(--bordeaux-dark);margin-bottom:10px;">💳 Charge</div>
-            <select id="myspaceChargeType" onchange="toggleMyspaceChargeFields()" style="width:100%;padding:10px;border-radius:8px;border:2px solid var(--rose-light);font-size:14px;margin-bottom:8px;">
-              <option value="loyer">Loyer</option>
-              <option value="gaz">Gaz</option>
-              <option value="electricite">Électricité</option>
-              <option value="credit">Crédit</option>
-              <option value="salaire">Salaire employé</option>
-              <option value="autre">Autre</option>
-            </select>
-            <div id="myspaceChargeEmployeeRow" style="display:none;margin-bottom:8px;">
-              <select id="myspaceChargeEmployee" style="width:100%;padding:10px;border-radius:8px;border:2px solid var(--rose-light);font-size:14px;"></select>
-            </div>
-            <div id="myspaceChargeAutreRow" style="display:none;margin-bottom:8px;">
-              <input type="text" id="myspaceChargeLabel" placeholder="Description" style="width:100%;padding:10px;border-radius:8px;border:2px solid var(--rose-light);font-size:14px;">
-            </div>
-            <input type="number" id="myspaceChargeAmount" placeholder="Montant (FDJ)" step="0.01" style="width:100%;padding:10px;border-radius:8px;border:2px solid var(--rose-light);font-size:14px;margin-bottom:8px;">
-            <button class="btn full" onclick="saveMyspaceCharge()">+ Enregistrer</button>
-          </div>
-
-          <!-- Dette livreur -->
-          <div style="margin-top:18px;">
-            <div style="font-weight:800;color:var(--bordeaux-dark);margin-bottom:10px;">🚚 Dette livreur</div>
-            <input type="number" id="myspaceDebtGiven" placeholder="Montant donné au livreur (FDJ)" step="0.01" style="width:100%;padding:10px;border-radius:8px;border:2px solid var(--rose-light);font-size:14px;margin-bottom:8px;">
-            <input type="number" id="myspaceDebtPaid" placeholder="Montant payé par le livreur (FDJ)" step="0.01" style="width:100%;padding:10px;border-radius:8px;border:2px solid var(--rose-light);font-size:14px;margin-bottom:8px;">
-            <div id="myspaceDebtPreview" style="font-size:13px;color:var(--gray);margin-bottom:8px;"></div>
-            <button class="btn full" onclick="saveMyspaceDebt()">+ Enregistrer</button>
-          </div>
-
-          <!-- Liste des saisies du jour -->
+          <!-- Récap du jour -->
           <div id="myspaceDayRecap" style="margin-top:18px;"></div>
         </div>
+
+        <!-- Solde livreur -->
+        <div id="myspaceDebtSummary" class="card" style="margin-top:12px;"></div>
       </div>
     </div>
   </div>
-
 
   <div id="viewAdminLogin" class="view">
     <div class="admin-login">

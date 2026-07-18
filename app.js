@@ -2363,49 +2363,66 @@ async function loadMyspaceAccountingDay() {
   const dateVal = document.getElementById("myspaceAccountingDate").value;
   if (!dateVal) return;
 
-  // Vérifie si cette journée a déjà été soumise
-  const [purchasesRes, chargesRes, submittedRes] = await Promise.all([
-    sb.from("accounting_purchases").select("*").eq("entry_date", dateVal),
-    sb.from("accounting_charges").select("*, employees(full_name)").eq("entry_date", dateVal),
-    sb.from("accounting_submitted_days").select("*").eq("entry_date", dateVal).maybeSingle()
+  const [purchasesRes, debtRes] = await Promise.all([
+    sb.from("accounting_purchases").select("*").eq("entry_date", dateVal).order("created_at"),
+    sb.from("accounting_delivery_debts").select("*").eq("entry_date", dateVal).maybeSingle()
   ]);
 
-  const isSubmitted = !!submittedRes.data;
   const purchases = purchasesRes.data || [];
-  const charges = chargesRes.data || [];
+  const debt = debtRes.data;
+  const totalCourses = purchases.reduce((s, p) => s + parseFloat(p.amount), 0);
+  const given = debt ? parseFloat(debt.amount_given) : 0;
+  const solde = given - totalCourses;
 
-  if (isSubmitted) {
-    // Journée verrouillée : afficher le message de confirmation
-    document.getElementById("myspaceAccountingLocked").style.display = "block";
-    document.getElementById("myspaceAccountingForm").style.display = "none";
-    const d = new Date(dateVal).toLocaleDateString("fr-FR", { day: "numeric", month: "long" });
-    document.getElementById("myspaceLockedMessage").textContent =
-      `Les informations du ${d} ont bien été enregistrées.`;
-    return;
-  }
+  // Pré-remplir le montant donné si déjà saisi
+  if (debt) document.getElementById("myspaceDebtGiven").value = debt.amount_given;
 
-  // Journée non soumise : afficher le formulaire
-  document.getElementById("myspaceAccountingLocked").style.display = "none";
-  document.getElementById("myspaceAccountingForm").style.display = "block";
-
-  // Afficher les saisies déjà faites ce jour (sans totaux ni bénéfice)
+  // Récap courses du jour
   const recap = document.getElementById("myspaceDayRecap");
-  let recapHtml = "";
-  if (purchases.length > 0) {
-    recapHtml += `<div style="font-weight:700;color:var(--bordeaux-dark);margin-bottom:4px;">🛒 Courses saisies :</div>`;
-    recapHtml += purchases.map(p =>
-      `<div style="font-size:13px;color:var(--gray);padding:3px 0;border-bottom:1px solid var(--rose-light);">${p.store_name} — ${parseFloat(p.amount).toFixed(2)}FDJ</div>`
-    ).join("");
+  if (purchases.length === 0) {
+    recap.innerHTML = `<div style="color:var(--gray);font-size:13px;text-align:center;padding:12px;">Aucune course saisie pour ce jour.</div>`;
+  } else {
+    let html = `<div style="font-weight:700;color:var(--bordeaux-dark);margin-bottom:8px;">🛒 Courses saisies</div>`;
+    purchases.forEach(p => {
+      html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--rose-light);font-size:14px;">
+        <span>${p.store_name}</span>
+        <span style="font-weight:700;">${parseFloat(p.amount).toFixed(0)} FDJ
+          <button onclick="deleteMyspacePurchase('${p.id}')" style="border:none;background:none;cursor:pointer;color:var(--red-text);font-size:13px;margin-left:4px;">✕</button>
+        </span>
+      </div>`;
+    });
+    html += `<div style="display:flex;justify-content:space-between;padding:8px 0;font-weight:800;font-size:15px;color:var(--bordeaux-dark);">
+      <span>Total courses</span><span>${totalCourses.toFixed(0)} FDJ</span>
+    </div>`;
+    recap.innerHTML = html;
   }
-  if (charges.length > 0) {
-    recapHtml += `<div style="font-weight:700;color:var(--bordeaux-dark);margin:10px 0 4px;">💳 Charges saisies :</div>`;
-    const chargeLabels = { loyer:"Loyer", gaz:"Gaz", electricite:"Électricité", credit:"Crédit", salaire:"Salaire", autre:"Autre" };
-    recapHtml += charges.map(c => {
-      const detail = c.charge_type === "salaire" ? (c.employees?.full_name || "") : (c.label || "");
-      return `<div style="font-size:13px;color:var(--gray);padding:3px 0;border-bottom:1px solid var(--rose-light);">${chargeLabels[c.charge_type] || c.charge_type}${detail ? " — " + detail : ""} — ${parseFloat(c.amount).toFixed(2)}FDJ</div>`;
-    }).join("");
+
+  // Solde livreur
+  const summary = document.getElementById("myspaceDebtSummary");
+  if (given > 0 || totalCourses > 0) {
+    summary.innerHTML = `
+      <div style="font-weight:800;color:var(--bordeaux-dark);margin-bottom:12px;">📊 Solde du jour</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
+        <div style="background:var(--rose-pale);border-radius:10px;padding:12px;text-align:center;">
+          <div style="font-size:11px;color:var(--gray);font-weight:700;">Reçu</div>
+          <div style="font-size:20px;font-weight:800;color:var(--bordeaux-dark);">${given.toFixed(0)} FDJ</div>
+        </div>
+        <div style="background:var(--rose-pale);border-radius:10px;padding:12px;text-align:center;">
+          <div style="font-size:11px;color:var(--gray);font-weight:700;">Dépensé</div>
+          <div style="font-size:20px;font-weight:800;color:var(--red-text);">${totalCourses.toFixed(0)} FDJ</div>
+        </div>
+      </div>
+      <div style="background:${solde >= 0 ? 'var(--green-bg)' : 'var(--red-bg)'};border-radius:12px;padding:16px;text-align:center;">
+        <div style="font-size:13px;color:${solde >= 0 ? 'var(--green)' : 'var(--red-text)'};font-weight:700;">
+          ${solde >= 0 ? '✓ Je dois rendre' : '⚠ Je suis en déficit'}
+        </div>
+        <div style="font-size:28px;font-weight:800;color:${solde >= 0 ? 'var(--green)' : 'var(--red-text)'};">
+          ${solde >= 0 ? '+' : ''}${solde.toFixed(0)} FDJ
+        </div>
+      </div>`;
+  } else {
+    summary.innerHTML = "";
   }
-  recap.innerHTML = recapHtml || `<div style="color:var(--gray);font-size:13px;">Aucune saisie pour ce jour encore.</div>`;
 }
 
 async function saveMyspacePurchase() {
@@ -2423,6 +2440,16 @@ async function saveMyspacePurchase() {
   document.getElementById("myspacePurchaseAmount").value = "";
   document.getElementById("myspaceReceiptPreview").textContent = "📷 Photo de la facture (optionnel)";
   myspaceReceiptDataUrl = null;
+  await syncDebtPaidForDate(dateVal);
+  showToast(`✓ ${store} — ${amount.toFixed(0)} FDJ ajouté`);
+  loadMyspaceAccountingDay();
+}
+
+async function deleteMyspacePurchase(id) {
+  if (!confirm("Supprimer cette course ?")) return;
+  const { data: p } = await sb.from("accounting_purchases").select("entry_date").eq("id", id).single();
+  await sb.from("accounting_purchases").delete().eq("id", id);
+  if (p) await syncDebtPaidForDate(p.entry_date);
   loadMyspaceAccountingDay();
 }
 

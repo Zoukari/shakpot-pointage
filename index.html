@@ -686,14 +686,14 @@ td.today-col.emp-col{ background: var(--rose-light) !important; color: var(--bor
       <div class="subtitle" id="myspaceSubtitle">Ton planning, tes heures et tes pointages — lecture seule</div>
       <button class="small-link" style="margin-bottom:20px;display:inline-block;" onclick="myspaceLogout()">← Se déconnecter</button>
 
-      <div class="card">
+      <div class="card" id="myspacePlanningCard">
         <h3>Mon planning (cette semaine)</h3>
         <div style="overflow-x:auto;">
           <table id="myspaceScheduleTable"></table>
         </div>
       </div>
 
-      <div class="card">
+      <div class="card" id="myspaceHeuresCard">
         <div class="toolbar">
           <label style="font-weight:700;font-size:14px;">Période :</label>
           <select id="myspaceHoursPeriodType" onchange="renderMyspaceHours()">
@@ -706,7 +706,7 @@ td.today-col.emp-col{ background: var(--rose-light) !important; color: var(--bor
         <div id="myspaceHoursSummary"></div>
       </div>
 
-      <div class="card">
+      <div class="card" id="myspacePointagesCard">
         <h3>Mes derniers pointages</h3>
         <div style="overflow-x:auto;">
           <table id="myspaceLogsTable"></table>
@@ -783,6 +783,20 @@ td.today-col.emp-col{ background: var(--rose-light) !important; color: var(--bor
 
         <!-- Solde livreur -->
         <div id="myspaceDebtSummary" class="card" style="margin-top:12px;"></div>
+
+        <!-- Récap période livreur -->
+        <div class="card" style="margin-top:12px;">
+          <div class="toolbar">
+            <label style="font-weight:700;font-size:14px;">Historique :</label>
+            <select id="myspaceDebtPeriodType" onchange="renderMyspaceDebtSummary()" style="padding:8px;border-radius:8px;border:2px solid var(--rose-light);font-size:14px;">
+              <option value="day">Jour</option>
+              <option value="week">Semaine</option>
+              <option value="month" selected>Mois</option>
+            </select>
+            <input type="date" id="myspaceDebtPeriodDate" onchange="renderMyspaceDebtSummary()" style="padding:8px;border-radius:8px;border:2px solid var(--rose-light);font-size:14px;">
+          </div>
+          <div id="myspaceDebtTable"></div>
+        </div>
       </div>
     </div>
   </div>

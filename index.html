@@ -998,14 +998,24 @@ td.today-col.emp-col{ background: var(--rose-light) !important; color: var(--bor
 
           <!-- Dette livreur -->
           <div style="margin-top:18px;grid-column:1/-1;">
-            <div style="font-weight:800;color:var(--bordeaux-dark);margin-bottom:10px;">🚚 Dette livreur</div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-              <input type="number" id="debtGiven" placeholder="Montant donné (FDJ)" step="0.01" style="padding:10px;border-radius:8px;border:2px solid var(--rose-light);font-size:14px;" oninput="updateDebtPreview()">
-              <input type="number" id="debtPaid" placeholder="Montant payé (FDJ)" step="0.01" style="padding:10px;border-radius:8px;border:2px solid var(--rose-light);font-size:14px;" oninput="updateDebtPreview()">
+            <div style="font-weight:800;color:var(--bordeaux-dark);margin-bottom:10px;">🚚 Livreur — montant donné</div>
+            <div style="background:var(--rose-pale);border-radius:10px;padding:10px;font-size:13px;color:var(--gray);margin-bottom:8px;">
+              Le montant <strong>Payé</strong> est calculé automatiquement depuis les courses du jour.
             </div>
-            <div id="debtPreview" style="font-size:13px;margin-top:6px;font-weight:700;"></div>
-            <input type="text" id="debtNote" placeholder="Note (optionnel)" style="width:100%;padding:10px;border-radius:8px;border:2px solid var(--rose-light);font-size:14px;margin-top:8px;">
-            <button class="btn full" style="margin-top:10px;" onclick="saveDebt()">+ Enregistrer dette livreur</button>
+            <input type="number" id="debtGiven" placeholder="Montant donné au livreur (FDJ)" step="0.01" style="width:100%;padding:10px;border-radius:8px;border:2px solid var(--rose-light);font-size:14px;margin-bottom:8px;">
+            <input type="text" id="debtNote" placeholder="Note (optionnel)" style="width:100%;padding:10px;border-radius:8px;border:2px solid var(--rose-light);font-size:14px;margin-bottom:8px;">
+            <button class="btn full" onclick="saveDebt()">+ Enregistrer</button>
+          </div>
+
+          <!-- Annexe dette livreur -->
+          <div style="margin-top:14px;grid-column:1/-1;">
+            <div style="font-weight:800;color:var(--bordeaux-dark);margin-bottom:10px;">📎 Annexe livreur</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+              <input type="date" id="debtAnnexDate" style="padding:10px;border-radius:8px;border:2px solid var(--rose-light);font-size:14px;">
+              <input type="number" id="debtAnnexAmount" placeholder="Montant (FDJ)" step="0.01" style="padding:10px;border-radius:8px;border:2px solid var(--rose-light);font-size:14px;">
+            </div>
+            <input type="text" id="debtAnnexMotif" placeholder="Motif (ex: avance, remboursement...)" style="width:100%;padding:10px;border-radius:8px;border:2px solid var(--rose-light);font-size:14px;margin-top:8px;">
+            <button class="btn secondary full" style="margin-top:8px;" onclick="saveDebtAnnex()">+ Ajouter annexe</button>
           </div>
         </div>
       </div>

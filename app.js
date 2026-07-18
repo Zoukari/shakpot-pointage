@@ -215,6 +215,21 @@ async function checkAdminLogin() {
   }
 }
 
+// Resynchronise amount_paid de toutes les dettes livreur depuis les courses réelles
+// À utiliser une fois pour corriger les données historiques
+async function resyncAllDebts() {
+  if (!confirm("Recalculer automatiquement les montants 'Payé' de toutes les dettes livreur depuis les courses réelles ? Cette opération peut prendre quelques secondes.")) return;
+  const { data: debts } = await sb.from("accounting_delivery_debts").select("entry_date");
+  if (!debts || debts.length === 0) { showToast("Aucune dette à synchroniser."); return; }
+  let count = 0;
+  for (const d of debts) {
+    await syncDebtPaidForDate(d.entry_date);
+    count++;
+  }
+  showToast(`✓ ${count} jours synchronisés`);
+  renderAccountingSummary();
+}
+
 async function changeAdminPassword() {
   const newPass = document.getElementById("newAdminPassword").value.trim();
   const confirmPass = document.getElementById("confirmAdminPassword").value.trim();
@@ -1937,6 +1952,18 @@ async function saveCA() {
   renderAccountingSummary();
 }
 
+// Recalcule automatiquement amount_paid dans accounting_delivery_debts
+// depuis le total réel des courses du jour — appelé après chaque ajout/modif/suppression de course
+async function syncDebtPaidForDate(dateVal) {
+  const { data: dayPurchases } = await sb.from("accounting_purchases").select("amount").eq("entry_date", dateVal);
+  const autoPaid = (dayPurchases || []).reduce((s, p) => s + parseFloat(p.amount), 0);
+  // Met à jour amount_paid seulement si une ligne dette existe pour ce jour
+  const { data: existing } = await sb.from("accounting_delivery_debts").select("id").eq("entry_date", dateVal).maybeSingle();
+  if (existing) {
+    await sb.from("accounting_delivery_debts").update({ amount_paid: autoPaid }).eq("entry_date", dateVal);
+  }
+}
+
 async function savePurchase() {
   const dateVal = document.getElementById("accountingDate").value;
   const store = document.getElementById("purchaseStore").value.trim();
@@ -1949,7 +1976,8 @@ async function savePurchase() {
   document.getElementById("purchaseAmount").value = "";
   document.getElementById("receiptPhotoPreview").textContent = "📷 Appuyer pour prendre/choisir la photo de la facture";
   receiptDataUrl = null;
-  showToast(`✓ Courses "${store}" ajoutées : ${amount.toFixed(2)} FDJ`);
+  await syncDebtPaidForDate(dateVal);
+  showToast(`✓ Courses "${store}" ajoutées : ${amount.toFixed(0)} FDJ`);
   loadAccountingDay();
   renderAccountingSummary();
 }
@@ -2047,7 +2075,10 @@ async function loadAccountingDay() {
 
 async function deletePurchase(id) {
   if (!confirm("Supprimer cette ligne de courses ?")) return;
+  // Récupère la date avant suppression pour pouvoir re-sync
+  const { data: p } = await sb.from("accounting_purchases").select("entry_date").eq("id", id).single();
   await sb.from("accounting_purchases").delete().eq("id", id);
+  if (p) await syncDebtPaidForDate(p.entry_date);
   loadAccountingDay();
   renderAccountingSummary();
 }
@@ -2307,6 +2338,7 @@ async function editPurchase(id, date, store, currentAmount) {
   const amount = parseFloat(newAmount);
   if (isNaN(amount)) { alert("Montant invalide."); return; }
   await sb.from("accounting_purchases").update({ store_name: newStore.trim(), amount }).eq("id", id);
+  await syncDebtPaidForDate(date);
   loadAccountingDay();
   renderAccountingSummary();
 }

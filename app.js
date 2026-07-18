@@ -2385,7 +2385,6 @@ async function renderMyspaceDebtSummary() {
     return;
   }
 
-  // Grouper par jour
   const days = new Set([...purchases.map(p => p.entry_date), ...debts.map(d => d.entry_date)]);
   const purchasesByDay = {};
   purchases.forEach(p => { if (!purchasesByDay[p.entry_date]) purchasesByDay[p.entry_date] = []; purchasesByDay[p.entry_date].push(p); });
@@ -2410,11 +2409,29 @@ async function renderMyspaceDebtSummary() {
         <span style="color:${solde >= 0 ? 'var(--green)' : 'var(--red-text)'};font-weight:700;">${solde >= 0 ? '+' : ''}${solde.toFixed(0)} FDJ</span>
       </div>
       <div style="padding:10px 14px;">
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;font-size:13px;">
-          <div>💵 Reçu : <strong>${given.toFixed(0)} FDJ</strong></div>
-          <div>🛒 Dépensé : <strong style="color:var(--red-text);">${dayTotal.toFixed(0)} FDJ</strong></div>
+        <!-- Montant reçu modifiable -->
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--rose-light);font-size:14px;">
+          <span>💵 Reçu</span>
+          <span>
+            <strong>${given.toFixed(0)} FDJ</strong>
+            ${debt ? `
+              <button onclick="editMyspaceDebt('${debt.id}')" style="border:none;background:none;cursor:pointer;color:var(--gray);font-size:13px;margin-left:6px;">✏</button>
+              <button onclick="deleteMyspaceDebt('${debt.id}','${date}')" style="border:none;background:none;cursor:pointer;color:var(--red-text);font-size:13px;">✕</button>` : ''}
+          </span>
         </div>
-        ${dayPurchases.map(p => `<div style="font-size:12px;color:var(--gray);padding:2px 0;">${p.store_name} — ${parseFloat(p.amount).toFixed(0)} FDJ</div>`).join("")}
+        <!-- Courses modifiables -->
+        ${dayPurchases.map(p => `
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--rose-light);font-size:13px;color:var(--gray);">
+          <span>${p.store_name}</span>
+          <span>
+            ${parseFloat(p.amount).toFixed(0)} FDJ
+            <button onclick="editMyspacePurchase('${p.id}','${p.store_name.replace(/'/g,"\\'")}',${p.amount})" style="border:none;background:none;cursor:pointer;color:var(--gray);font-size:12px;margin-left:4px;">✏</button>
+            <button onclick="deleteMyspacePurchaseFromSummary('${p.id}','${date}')" style="border:none;background:none;cursor:pointer;color:var(--red-text);font-size:12px;">✕</button>
+          </span>
+        </div>`).join("")}
+        <div style="display:flex;justify-content:space-between;padding-top:6px;font-size:13px;font-weight:700;color:var(--red-text);">
+          <span>🛒 Total courses</span><span>${dayTotal.toFixed(0)} FDJ</span>
+        </div>
       </div>
     </div>`;
   });
@@ -2427,6 +2444,51 @@ async function renderMyspaceDebtSummary() {
   </div>` + html;
 
   el.innerHTML = html;
+}
+
+async function editMyspaceDebt(id) {
+  const { data } = await sb.from("accounting_delivery_debts").select("*").eq("id", id).single();
+  if (!data) return;
+  const newVal = prompt("Montant reçu (FDJ) :", data.amount_given);
+  if (newVal === null) return;
+  const amount = parseFloat(newVal);
+  if (isNaN(amount)) { alert("Montant invalide."); return; }
+  await sb.from("accounting_delivery_debts").update({ amount_given: amount }).eq("id", id);
+  showToast("✓ Modifié");
+  loadMyspaceAccountingDay();
+  renderMyspaceDebtSummary();
+}
+
+async function deleteMyspaceDebt(id, date) {
+  if (!confirm("Supprimer le montant reçu pour ce jour ?")) return;
+  await sb.from("accounting_delivery_debts").delete().eq("id", id);
+  showToast("✓ Supprimé");
+  loadMyspaceAccountingDay();
+  renderMyspaceDebtSummary();
+}
+
+async function editMyspacePurchase(id, store, amount) {
+  const newStore = prompt("Magasin :", store);
+  if (newStore === null) return;
+  const newAmount = prompt("Montant (FDJ) :", amount);
+  if (newAmount === null) return;
+  const val = parseFloat(newAmount);
+  if (isNaN(val)) { alert("Montant invalide."); return; }
+  await sb.from("accounting_purchases").update({ store_name: newStore.trim(), amount: val }).eq("id", id);
+  const { data: p } = await sb.from("accounting_purchases").select("entry_date").eq("id", id).maybeSingle();
+  if (p) await syncDebtPaidForDate(p.entry_date);
+  showToast("✓ Course modifiée");
+  loadMyspaceAccountingDay();
+  renderMyspaceDebtSummary();
+}
+
+async function deleteMyspacePurchaseFromSummary(id, date) {
+  if (!confirm("Supprimer cette course ?")) return;
+  await sb.from("accounting_purchases").delete().eq("id", id);
+  await syncDebtPaidForDate(date);
+  showToast("✓ Course supprimée");
+  loadMyspaceAccountingDay();
+  renderMyspaceDebtSummary();
 }
 
 async function loadMyspaceAccountingDay() {

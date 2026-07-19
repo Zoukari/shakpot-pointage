@@ -1844,28 +1844,28 @@ function onAccountingDateChange() {
   renderAccountingSummary();
 }
 
-// Toast de confirmation (message en bas d'écran pendant 5 secondes)
+// Toast de confirmation (message en bas d'écran pendant 2 secondes)
 function showToast(message, type = "success") {
   let toast = document.getElementById("globalToast");
   if (!toast) {
     toast = document.createElement("div");
     toast.id = "globalToast";
     toast.style.cssText = `
-      position:fixed; bottom:24px; left:50%; transform:translateX(-50%);
-      background:var(--ink); color:#fff; padding:12px 24px; border-radius:999px;
+      position:fixed; bottom:28px; left:50%; transform:translateX(-50%);
+      padding:12px 24px; border-radius:999px;
       font-weight:700; font-size:14px; z-index:9999; opacity:0;
-      transition: opacity .3s; pointer-events:none; white-space:nowrap;
-      box-shadow: 0 6px 20px rgba(0,0,0,0.25);
+      transition: opacity .25s ease; pointer-events:none; white-space:nowrap;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.2); color:#fff;
     `;
     document.body.appendChild(toast);
   }
-  if (type === "success") toast.style.background = "var(--green)";
-  else if (type === "error") toast.style.background = "var(--red-text)";
-  else toast.style.background = "var(--ink)";
+  if (type === "success") toast.style.background = "#22c55e";
+  else if (type === "error") toast.style.background = "#ef4444";
+  else toast.style.background = "#1a1a2e";
   toast.textContent = message;
   toast.style.opacity = "1";
   clearTimeout(toast._timeout);
-  toast._timeout = setTimeout(() => { toast.style.opacity = "0"; }, 5000);
+  toast._timeout = setTimeout(() => { toast.style.opacity = "0"; }, 2000);
 }
 
 function populateChargeEmployeeSelect() {
@@ -1974,7 +1974,7 @@ async function saveCA() {
   );
   if (error) { status.textContent = "Erreur: " + error.message; return; }
   status.textContent = "";
-  showToast(`✓ CA enregistré : ${amount.toFixed(2)} FDJ`);
+  showToast(`📈 CA enregistré : ${amount.toFixed(0)} FDJ`);
   loadAccountingDay();
   renderAccountingSummary();
 }
@@ -2024,7 +2024,7 @@ async function saveCharge() {
   document.getElementById("chargeAmount").value = "";
   if (label) document.getElementById("chargeLabel").value = "";
   const chargeLabels = { loyer:"Loyer", gaz:"Gaz", electricite:"Électricité", credit:"Crédit", salaire:"Salaire", autre:"Autre" };
-  showToast(`✓ Charge "${chargeLabels[type]}" ajoutée : ${amount.toFixed(2)} FDJ`);
+  showToast(`💳 Charge ${chargeLabels[type]} — ${amount.toFixed(0)} FDJ enregistrée`);
   loadAccountingDay();
   renderAccountingSummary();
 }
@@ -2573,8 +2573,8 @@ async function saveMyspacePurchase() {
   document.getElementById("myspaceReceiptPreview").textContent = "📷 Photo de la facture (optionnel)";
   myspaceReceiptDataUrl = null;
   await syncDebtPaidForDate(dateVal);
-  showToast(`✓ ${store} — ${amount.toFixed(0)} FDJ ajouté`);
-  loadMyspaceAccountingDay();
+  showToast(`🛒 ${store} — ${amount.toFixed(0)} FDJ enregistré`);
+  renderMyspaceDebtSummary();
 }
 
 async function deleteMyspacePurchase(id) {
@@ -2700,21 +2700,17 @@ async function deleteDebtAnnex(id) {
 async function saveMyspaceDebt() {
   const dateVal = document.getElementById("myspaceAccountingDate").value;
   const given = parseFloat(document.getElementById("myspaceDebtGiven").value) || 0;
-  if (given === 0) { alert("Merci de saisir le montant donné au livreur."); return; }
-
-  // Payé = total courses du jour (automatique)
+  if (given === 0) { alert("Merci de saisir le montant reçu."); return; }
   const { data: dayPurchases } = await sb.from("accounting_purchases").select("amount").eq("entry_date", dateVal);
   const autoPaid = (dayPurchases || []).reduce((s, p) => s + parseFloat(p.amount), 0);
-
   const { error } = await sb.from("accounting_delivery_debts").upsert({
     entry_date: dateVal, amount_given: given, amount_paid: autoPaid,
     entered_by: myspaceEmployee ? myspaceEmployee.id : null
   }, { onConflict: "entry_date" });
   if (error) { alert("Erreur: " + error.message); return; }
   document.getElementById("myspaceDebtGiven").value = "";
-  document.getElementById("myspaceDebtPreview").textContent = "";
-  showToast("✓ Enregistré");
-  loadMyspaceAccountingDay();
+  showToast(`💵 ${given.toFixed(0)} FDJ reçu enregistré`);
+  renderMyspaceDebtSummary();
 }
 
 // ============================================

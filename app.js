@@ -530,9 +530,12 @@ async function submitTimeLog() {
     document.getElementById("doneMessage").textContent = "Erreur lors de l'enregistrement.";
     document.getElementById("doneMessage").className = "status-msg error";
   } else {
-    document.getElementById("doneMessage").textContent =
-      pendingLogType === "in" ? `Bonne arrivée, ${selectedEmployee.full_name} !` : `Bonne route, ${selectedEmployee.full_name} !`;
+    const msg = pendingLogType === "in"
+      ? `👋 Bonne arrivée, ${selectedEmployee.full_name} !`
+      : `🚀 Bonne route, ${selectedEmployee.full_name} !`;
+    document.getElementById("doneMessage").textContent = msg.replace(/^[^\s]+\s/, '');
     document.getElementById("doneMessage").className = "status-msg success";
+    showToast(msg);
   }
   goToStep("stepDone");
 }
@@ -1578,18 +1581,19 @@ function toggleChecklistItem(key, checked) {
   const state = loadChecklistState();
   state[key] = checked;
   saveChecklistState(state);
-  // Met à jour visuellement le texte barré sans re-render complet
   const label = event.target.closest("label");
   if (label) {
     const span = label.querySelector("span");
     if (span) span.style.cssText = checked ? "text-decoration:line-through;color:var(--gray);" : "";
   }
+  if (checked) showToast("✅ Tâche cochée");
 }
 
 function resetChecklist() {
   if (!confirm("Tout décocher ? La checklist repart à zéro.")) return;
   saveChecklistState({});
   renderChecklist();
+  showToast("🔄 Checklist remise à zéro");
 }
 
 // ============================================
@@ -2106,6 +2110,7 @@ async function deletePurchase(id) {
   const { data: p } = await sb.from("accounting_purchases").select("entry_date").eq("id", id).single();
   await sb.from("accounting_purchases").delete().eq("id", id);
   if (p) await syncDebtPaidForDate(p.entry_date);
+  showToast("🗑 Course supprimée");
   loadAccountingDay();
   renderAccountingSummary();
 }
@@ -2113,6 +2118,7 @@ async function deletePurchase(id) {
 async function deleteCharge(id) {
   if (!confirm("Supprimer cette charge ?")) return;
   await sb.from("accounting_charges").delete().eq("id", id);
+  showToast("🗑 Charge supprimée");
   loadAccountingDay();
   renderAccountingSummary();
 }
@@ -2323,12 +2329,14 @@ async function editCA(id, date, currentAmount) {
   const amount = parseFloat(val);
   if (isNaN(amount)) { alert("Montant invalide."); return; }
   await sb.from("accounting_revenue").update({ amount }).eq("id", id);
+  showToast(`📈 CA modifié : ${amount.toFixed(0)} FDJ`);
   loadAccountingDay();
   renderAccountingSummary();
 }
 async function deleteCA(id) {
   if (!confirm("Supprimer ce CA ?")) return;
   await sb.from("accounting_revenue").delete().eq("id", id);
+  showToast("🗑 CA supprimé");
   loadAccountingDay();
   renderAccountingSummary();
 }
@@ -2343,6 +2351,7 @@ async function editPurchase(id, date, store, currentAmount) {
   if (isNaN(amount)) { alert("Montant invalide."); return; }
   await sb.from("accounting_purchases").update({ store_name: newStore.trim(), amount }).eq("id", id);
   await syncDebtPaidForDate(date);
+  showToast(`✏️ ${newStore} — ${amount.toFixed(0)} FDJ modifié`);
   loadAccountingDay();
   renderAccountingSummary();
 }
@@ -2354,6 +2363,7 @@ async function editCharge(id, date, currentAmount) {
   const amount = parseFloat(newAmount);
   if (isNaN(amount)) { alert("Montant invalide."); return; }
   await sb.from("accounting_charges").update({ amount }).eq("id", id);
+  showToast(`✏️ Charge modifiée : ${amount.toFixed(0)} FDJ`);
   loadAccountingDay();
   renderAccountingSummary();
 }

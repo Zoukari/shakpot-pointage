@@ -568,8 +568,48 @@ td.today-col.emp-col{ background: var(--rose-light) !important; color: var(--bor
   th, td{ padding:7px 5px; }
   .topbar{ flex-direction:column; gap:12px; padding: 70px 18px 14px; position:relative; }
   .logo-badge-img{ top:14px; transform: translateX(-50%); height:56px; }
-  .view{ padding: 22px 14px 50px; }
-  .kiosk-card{ padding: 28px 20px; margin: 16px auto; }
+  .view{ padding: 16px 12px 60px; }
+  .kiosk-card{ padding: 24px 16px; margin: 12px auto; }
+  .card{ padding: 18px 14px; }
+  h1.page-title{ font-size: 22px; }
+  h2{ font-size: 18px; }
+  h3{ font-size: 16px; }
+  /* Barre d'onglets Mon espace — scroll horizontal fluide */
+  #myspaceTabBar{
+    gap: 6px;
+    padding-bottom: 8px;
+    margin-bottom: 14px;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  #myspaceTabBar::-webkit-scrollbar{ display: none; }
+  .myspace-tab-btn{
+    padding: 8px 12px;
+    font-size: 12px;
+    flex-shrink: 0;
+  }
+  /* Tableau récap comptabilité — scroll horizontal */
+  #accountingSummary{ overflow-x: auto; }
+  /* Toolbar responsive */
+  .toolbar{ flex-wrap: wrap; gap: 8px; }
+  .toolbar select, .toolbar input{ font-size: 13px; padding: 8px; }
+  /* Grille employés */
+  .employee-grid{ grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  /* Admin tabs — scroll horizontal */
+  .admin-tabs{ flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 4px; }
+  .admin-tabs::-webkit-scrollbar{ display: none; }
+  .admin-tabs button{ padding: 10px 12px; font-size: 13px; flex-shrink: 0; }
+  /* Boutons */
+  .btn{ padding: 12px 18px; font-size: 14px; }
+}
+
+@media (max-width: 400px){
+  .employee-grid{ grid-template-columns: repeat(2, 1fr); }
+  .myspace-tab-btn{ padding: 7px 10px; font-size: 11px; }
+  .pin-pad{ gap: 10px; }
+  .pin-key{ width: 70px; height: 70px; font-size: 22px; }
 }
 </style>
 </head>

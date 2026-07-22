@@ -1688,7 +1688,7 @@ function myspaceCheckPin() {
   // Afficher la barre d'onglets
   const tabBar = document.getElementById("myspaceTabBar");
   tabBar.innerHTML = tabs.map((t, i) =>
-    `<button class="myspace-tab-btn${i === 0 ? ' active' : ''}" onclick="switchMyspaceTab('${t.id}')">${t.label}</button>`
+    `<button class="myspace-tab-btn${i === 0 ? ' active' : ''}" data-tab="${t.id}" onclick="switchMyspaceTab('${t.id}')">${t.label}</button>`
   ).join("");
 
   // Activer le premier onglet
@@ -1696,17 +1696,20 @@ function myspaceCheckPin() {
 }
 
 function switchMyspaceTab(tabId) {
-  // Mettre à jour les boutons
+  // Mettre à jour les boutons via data-tab
   document.querySelectorAll(".myspace-tab-btn").forEach(btn => {
-    btn.classList.toggle("active", btn.textContent.includes(tabId) || btn.onclick?.toString().includes(`'${tabId}'`));
+    const isActive = btn.getAttribute("data-tab") === tabId;
+    btn.classList.toggle("active", isActive);
   });
-  // Masquer tous les panneaux
-  document.querySelectorAll(".myspace-tab-panel").forEach(p => p.classList.remove("active"));
-  // Afficher le panneau sélectionné
-  const panel = document.getElementById(`myspaceTab${tabId}`);
-  if (panel) panel.classList.add("active");
 
-  // Charger le contenu selon l'onglet
+  // Masquer tous les panneaux, afficher le bon
+  document.querySelectorAll(".myspace-tab-panel").forEach(p => {
+    p.style.display = "none";
+  });
+  const panel = document.getElementById(`myspaceTab${tabId}`);
+  if (panel) panel.style.display = "block";
+
+  // Charger le contenu
   if (tabId === "Planning") renderMyspaceSchedule();
   else if (tabId === "Heures") renderMyspaceHours();
   else if (tabId === "Pointages") renderMyspaceLogs();

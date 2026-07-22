@@ -1661,56 +1661,57 @@ function myspaceUpdatePinDisplay() {
 }
 
 function myspaceCheckPin() {
-  if (myspacePinBuffer === myspaceEmployee.pin_code) {
-    document.getElementById("myspaceLogin").style.display = "none";
-    document.getElementById("myspaceDashboard").style.display = "block";
-    document.getElementById("myspaceHoursPeriodDate").value = fmtDate(new Date());
-
-    const isLivreur = !!myspaceEmployee.comptabilite_access && !myspaceEmployee.caissier_access;
-    // Si c'est le livreur (comptabilite_access mais pas caissier) : masquer planning/heures/pointages
-    const hideSections = myspaceEmployee.comptabilite_access;
-    document.getElementById("myspacePlanningCard").style.display = hideSections ? "none" : "block";
-    document.getElementById("myspaceHeuresCard").style.display = hideSections ? "none" : "block";
-    document.getElementById("myspacePointagesCard").style.display = hideSections ? "none" : "block";
-
-    if (!hideSections) {
-      document.getElementById("myspaceTitle").textContent = `Salut ${myspaceEmployee.full_name} 👋`;
-      document.getElementById("myspaceSubtitle").textContent = "Ton planning, tes heures et tes pointages — lecture seule";
-      renderMyspaceSchedule();
-      renderMyspaceHours();
-      renderMyspaceLogs();
-    } else {
-      document.getElementById("myspaceTitle").textContent = `Salut ${myspaceEmployee.full_name} 👋`;
-      document.getElementById("myspaceSubtitle").textContent = "Tes courses et ton solde";
-    }
-
-    // Affiche la section comptabilité (livreur)
-    const accountingSection = document.getElementById("myspaceAccountingSection");
-    if (myspaceEmployee.comptabilite_access) {
-      accountingSection.style.display = "block";
-      initMyspaceAccounting();
-    } else {
-      accountingSection.style.display = "none";
-    }
-    // Affiche la liste de courses si l'employé a ce rôle
-    const listeSection = document.getElementById("myspaceListeCoursesSection");
-    if (myspaceEmployee.liste_courses_access) {
-      listeSection.style.display = "block";
-      initMyspaceListeCourses();
-    } else {
-      listeSection.style.display = "none";
-    }
-    if (myspaceEmployee.caissier_access) {
-      caissierSection.style.display = "block";
-      renderChecklist();
-    } else {
-      caissierSection.style.display = "none";
-    }
-  } else {
+  if (myspacePinBuffer !== myspaceEmployee.pin_code) {
     document.getElementById("myspacePinError").style.display = "block";
     myspacePinBuffer = "";
     myspaceUpdatePinDisplay();
+    return;
   }
+
+  document.getElementById("myspaceLogin").style.display = "none";
+  document.getElementById("myspaceDashboard").style.display = "block";
+  document.getElementById("myspaceTitle").textContent = `Salut ${myspaceEmployee.full_name} 👋`;
+  document.getElementById("myspaceHoursPeriodDate").value = fmtDate(new Date());
+
+  // Construire les onglets selon les rôles
+  const tabs = [];
+  if (!myspaceEmployee.comptabilite_access) {
+    tabs.push({ id: "Planning", label: "📅 Planning" });
+    tabs.push({ id: "Heures", label: "⏱ Heures" });
+    tabs.push({ id: "Pointages", label: "🕐 Pointages" });
+  }
+  if (myspaceEmployee.caissier_access) tabs.push({ id: "Checklist", label: "📋 Checklist" });
+  if (myspaceEmployee.liste_courses_access) tabs.push({ id: "Courses", label: "🛒 Courses" });
+  if (myspaceEmployee.comptabilite_access) tabs.push({ id: "Compta", label: "🚚 Mes courses" });
+
+  // Afficher la barre d'onglets
+  const tabBar = document.getElementById("myspaceTabBar");
+  tabBar.innerHTML = tabs.map((t, i) =>
+    `<button class="myspace-tab-btn${i === 0 ? ' active' : ''}" onclick="switchMyspaceTab('${t.id}')">${t.label}</button>`
+  ).join("");
+
+  // Activer le premier onglet
+  if (tabs.length > 0) switchMyspaceTab(tabs[0].id);
+}
+
+function switchMyspaceTab(tabId) {
+  // Mettre à jour les boutons
+  document.querySelectorAll(".myspace-tab-btn").forEach(btn => {
+    btn.classList.toggle("active", btn.textContent.includes(tabId) || btn.onclick?.toString().includes(`'${tabId}'`));
+  });
+  // Masquer tous les panneaux
+  document.querySelectorAll(".myspace-tab-panel").forEach(p => p.classList.remove("active"));
+  // Afficher le panneau sélectionné
+  const panel = document.getElementById(`myspaceTab${tabId}`);
+  if (panel) panel.classList.add("active");
+
+  // Charger le contenu selon l'onglet
+  if (tabId === "Planning") renderMyspaceSchedule();
+  else if (tabId === "Heures") renderMyspaceHours();
+  else if (tabId === "Pointages") renderMyspaceLogs();
+  else if (tabId === "Checklist") renderChecklist();
+  else if (tabId === "Courses") initMyspaceListeCourses();
+  else if (tabId === "Compta") initMyspaceAccounting();
 }
 
 function myspaceLogout() {
@@ -2858,12 +2859,7 @@ function sendCoursesWhatsApp() {
   });
   if (checked.length === 0) { alert("Cochez au moins un article avant d'envoyer."); return; }
 
-  const phoneEl = document.querySelector('input[name="whatsappContact"]:checked');
-  if (!phoneEl) { alert("Sélectionne un contact WhatsApp avant d'envoyer."); return; }
-  const phone = phoneEl.value.replace(/\D/g, "");
-
   const today = new Date().toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
-  // Grouper par catégorie
   const byCategory = {};
   checked.forEach(item => {
     if (!byCategory[item.category]) byCategory[item.category] = [];
@@ -2878,7 +2874,8 @@ function sendCoursesWhatsApp() {
   });
   msg += `_Envoyé depuis Shakpot Pointage_`;
 
-  const url = `https://wa.me/${phone}?text=${encodeURIComponent(msg)}`;
+  // Ouvre WhatsApp sans numéro → l'employé choisit lui-même le destinataire
+  const url = `https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`;
   window.open(url, "_blank");
   showToast("📲 WhatsApp ouvert !");
   uncheckAllCourses();

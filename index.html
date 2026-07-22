@@ -322,6 +322,28 @@ h1.page-title{
 .admin-panel{ display:none; }
 .admin-panel.active{ display:block; animation: fadeIn .25s ease; }
 
+/* Onglets Mon espace */
+.myspace-tab-btn {
+  border: none;
+  background: var(--rose-pale);
+  padding: 10px 16px;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+  color: var(--gray);
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: all .15s;
+}
+.myspace-tab-btn.active {
+  background: var(--bordeaux-dark);
+  color: #fff;
+}
+.myspace-tab-panel { display: none; }
+.myspace-tab-panel.active { display: block; animation: fadeIn .2s ease; }
+
+
 .card{
   background: var(--paper);
   border-radius: var(--radius);
@@ -682,120 +704,112 @@ td.today-col.emp-col{ background: var(--rose-light) !important; color: var(--bor
     </div>
 
     <div id="myspaceDashboard" style="display:none;">
-      <h1 class="page-title" id="myspaceTitle">Mon espace</h1>
-      <div class="subtitle" id="myspaceSubtitle">Ton planning, tes heures et tes pointages — lecture seule</div>
-      <button class="small-link" style="margin-bottom:20px;display:inline-block;" onclick="myspaceLogout()">← Se déconnecter</button>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+        <h1 class="page-title" id="myspaceTitle" style="margin:0;">Mon espace</h1>
+        <button class="small-link" onclick="myspaceLogout()" style="font-size:13px;">← Déco</button>
+      </div>
 
-      <div class="card" id="myspacePlanningCard">
-        <h3>Mon planning (cette semaine)</h3>
-        <div style="overflow-x:auto;">
-          <table id="myspaceScheduleTable"></table>
+      <!-- Navigation onglets Mon espace -->
+      <div id="myspaceTabBar" style="display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;margin-bottom:16px;-webkit-overflow-scrolling:touch;scrollbar-width:none;">
+      </div>
+
+      <!-- Contenu des onglets (un seul visible à la fois) -->
+      <div id="myspaceTabContent"></div>
+
+      <!-- Sections cachées (contenu réel monté dynamiquement) -->
+
+      <!-- Planning -->
+      <div id="myspaceTabPlanning" class="myspace-tab-panel" style="display:none;">
+        <div class="card">
+          <h3 style="margin-top:0;">📅 Mon planning</h3>
+          <div style="overflow-x:auto;">
+            <table id="myspaceScheduleTable"></table>
+          </div>
         </div>
       </div>
 
-      <div class="card" id="myspaceHeuresCard">
-        <div class="toolbar">
-          <label style="font-weight:700;font-size:14px;">Période :</label>
-          <select id="myspaceHoursPeriodType" onchange="renderMyspaceHours()">
-            <option value="day">Jour</option>
-            <option value="week" selected>Semaine</option>
-            <option value="month">Mois</option>
-          </select>
-          <input type="date" id="myspaceHoursPeriodDate" onchange="renderMyspaceHours()">
-        </div>
-        <div id="myspaceHoursSummary"></div>
-      </div>
-
-      <div class="card" id="myspacePointagesCard">
-        <h3>Mes derniers pointages</h3>
-        <div style="overflow-x:auto;">
-          <table id="myspaceLogsTable"></table>
+      <!-- Heures -->
+      <div id="myspaceTabHeures" class="myspace-tab-panel" style="display:none;">
+        <div class="card">
+          <div class="toolbar">
+            <label style="font-weight:700;font-size:14px;">Période :</label>
+            <select id="myspaceHoursPeriodType" onchange="renderMyspaceHours()">
+              <option value="day">Jour</option>
+              <option value="week" selected>Semaine</option>
+              <option value="month">Mois</option>
+            </select>
+            <input type="date" id="myspaceHoursPeriodDate" onchange="renderMyspaceHours()">
+          </div>
+          <div id="myspaceHoursSummary"></div>
         </div>
       </div>
 
-      <!-- Section checklist caissier (visible uniquement si rôle caissier) -->
-      <div id="myspaceCaissierSection" style="display:none;">
-        <h2 style="color:var(--bordeaux-dark);margin-top:8px;">📋 Checklist du soir</h2>
+      <!-- Pointages -->
+      <div id="myspaceTabPointages" class="myspace-tab-panel" style="display:none;">
+        <div class="card">
+          <h3 style="margin-top:0;">🕐 Mes pointages</h3>
+          <div style="overflow-x:auto;">
+            <table id="myspaceLogsTable"></table>
+          </div>
+        </div>
+      </div>
 
+      <!-- Checklist caissier -->
+      <div id="myspaceTabChecklist" class="myspace-tab-panel" style="display:none;">
         <div class="card">
           <h3 style="margin-top:0;">🌅 À l'arrivée</h3>
           <div id="checklist-arrivee"></div>
         </div>
-
         <div class="card">
           <h3 style="margin-top:0;">🍔 Pendant le service</h3>
           <div id="checklist-service"></div>
         </div>
-
         <div class="card">
           <h3 style="margin-top:0;">🌙 À la fermeture</h3>
           <div style="background:var(--rose-pale);border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:13px;color:var(--bordeaux-dark);">
             <strong>Horaires limites :</strong><br>
-            • Plus de commandes Kikidrop à partir de <strong>1h</strong><br>
-            • Plus de commandes Limo à partir de <strong>12h30</strong><br>
-            • Plus de burgers à partir de <strong>12h30</strong><br>
-            • Plus de livraisons à partir de <strong>1h</strong> (sur place uniquement)<br>
-            • La compta commence à partir de <strong>12h30</strong>
+            • Kikidrop : pas de commandes après <strong>1h</strong><br>
+            • Limo : pas de commandes après <strong>12h30</strong><br>
+            • Burgers : arrêt à <strong>12h30</strong><br>
+            • Livraisons : arrêt à <strong>1h</strong><br>
+            • Compta : à partir de <strong>12h30</strong>
           </div>
           <h4 style="color:var(--bordeaux-dark);margin:12px 0 8px;">Comptabilité</h4>
           <div id="checklist-fermeture-compta"></div>
-          <h4 style="color:var(--bordeaux-dark);margin:12px 0 8px;">Mise en bas de caisse</h4>
+          <h4 style="color:var(--bordeaux-dark);margin:12px 0 8px;">Caisse</h4>
           <div id="checklist-fermeture-caisse"></div>
           <h4 style="color:var(--bordeaux-dark);margin:12px 0 8px;">Dernières actions</h4>
           <div id="checklist-fermeture-fin"></div>
         </div>
-
         <button class="btn secondary full" style="margin-top:8px;" onclick="resetChecklist()">🔄 Tout décocher</button>
       </div>
 
-      <!-- Section comptabilité (visible uniquement si l'employé a l'accès) -->
-      <!-- Section liste de courses -->
-      <div id="myspaceListeCoursesSection" style="display:none;">
-        <h2 style="color:var(--bordeaux-dark);margin-top:8px;">🛒 Liste de courses</h2>
+      <!-- Liste de courses -->
+      <div id="myspaceTabCourses" class="myspace-tab-panel" style="display:none;">
         <div class="card">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
-            <p style="margin:0;color:var(--gray);font-size:13px;">Cochez ce qui manque, puis envoyez via WhatsApp.</p>
+            <p style="margin:0;color:var(--gray);font-size:13px;">Cochez ce qui manque.</p>
             <button onclick="uncheckAllCourses()" style="border:none;background:none;color:var(--gray);font-size:12px;cursor:pointer;text-decoration:underline;">Tout décocher</button>
           </div>
           <div id="myspaceCoursesListContainer">Chargement…</div>
           <div style="margin-top:16px;padding-top:16px;border-top:2px solid var(--rose-light);">
-            <div style="font-weight:700;color:var(--bordeaux-dark);margin-bottom:10px;">📲 Envoyer à :</div>
-            <div id="myspaceWhatsappContacts" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;"></div>
-            <button class="btn full" style="background:#25D366;" onclick="sendCoursesWhatsApp()">📲 Envoyer via WhatsApp</button>
-          </div>
-        </div>
-
-        <!-- Gestion de la liste (admin uniquement via Mon espace) -->
-        <div id="myspaceCoursesAdminSection" style="display:none;">
-          <h3 style="color:var(--bordeaux-dark);">⚙️ Gérer la liste</h3>
-          <div class="card">
-            <div style="display:flex;gap:8px;margin-bottom:12px;">
-              <input type="text" id="newCoursesCategory" placeholder="Catégorie" style="flex:1;padding:10px;border-radius:8px;border:2px solid var(--rose-light);font-size:14px;">
-              <input type="text" id="newCoursesItem" placeholder="Article" style="flex:2;padding:10px;border-radius:8px;border:2px solid var(--rose-light);font-size:14px;">
-              <button class="btn" onclick="addShoppingItem()">+</button>
-            </div>
-            <div id="myspaceCoursesAdminList"></div>
+            <button class="btn full" style="background:#25D366;color:#fff;" onclick="sendCoursesWhatsApp()">📲 Envoyer via WhatsApp</button>
           </div>
         </div>
       </div>
 
-      <div id="myspaceAccountingSection" style="display:none;">
-        <h2 style="color:var(--bordeaux-dark);margin-top:8px;">🚚 Mes courses</h2>
-
+      <!-- Comptabilité livreur -->
+      <div id="myspaceTabCompta" class="myspace-tab-panel" style="display:none;">
         <div id="myspaceAccountingForm" class="card">
           <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:16px;">
             <h3 style="margin:0;">Saisie du jour</h3>
             <input type="date" id="myspaceAccountingDate" onchange="loadMyspaceAccountingDay()" style="padding:10px;border-radius:8px;border:2px solid var(--rose-light);font-size:14px;">
           </div>
-
-          <!-- Montant donné -->
           <div style="margin-bottom:16px;">
             <div style="font-weight:800;color:var(--bordeaux-dark);margin-bottom:8px;">💵 Argent reçu</div>
-            <input type="number" id="myspaceDebtGiven" placeholder="Montant reçu pour les courses (FDJ)" step="0.01" style="width:100%;padding:12px;border-radius:10px;border:2px solid var(--rose-light);font-size:15px;margin-bottom:8px;">
+            <input type="number" id="myspaceDebtGiven" placeholder="Montant reçu (FDJ)" step="0.01" style="width:100%;padding:12px;border-radius:10px;border:2px solid var(--rose-light);font-size:15px;margin-bottom:8px;">
             <button class="btn full" onclick="saveMyspaceDebt()">✓ Enregistrer</button>
           </div>
-
-          <!-- Courses -->
           <div>
             <div style="font-weight:800;color:var(--bordeaux-dark);margin-bottom:8px;">🛒 Ajouter une course</div>
             <input type="text" id="myspacePurchaseStore" placeholder="Nom du magasin" style="width:100%;padding:12px;border-radius:10px;border:2px solid var(--rose-light);font-size:14px;margin-bottom:8px;">
@@ -806,13 +820,8 @@ td.today-col.emp-col{ background: var(--rose-light) !important; color: var(--bor
             </div>
             <button class="btn full" onclick="saveMyspacePurchase()">+ Ajouter</button>
           </div>
-
         </div>
-
-        <!-- Solde livreur -->
         <div id="myspaceDebtSummary" class="card" style="margin-top:12px;"></div>
-
-        <!-- Récap période livreur -->
         <div class="card" style="margin-top:12px;">
           <div class="toolbar">
             <label style="font-weight:700;font-size:14px;">Historique :</label>
@@ -826,20 +835,11 @@ td.today-col.emp-col{ background: var(--rose-light) !important; color: var(--bor
           <div id="myspaceDebtTable"></div>
         </div>
       </div>
+
     </div>
   </div>
 
-  <div id="viewAdminLogin" class="view">
-    <div class="admin-login">
-      <h2>Accès admin</h2>
-      <p style="color:var(--gray);font-size:14px;">Entre le mot de passe admin</p>
-      <input type="password" id="adminPassword" placeholder="Mot de passe">
-      <button class="btn full" onclick="checkAdminLogin()">Entrer</button>
-      <div id="adminLoginError" class="status-msg error" style="display:none;">Mot de passe incorrect</div>
-    </div>
-  </div>
-
-  <!-- ===================== ADMIN PANEL ===================== -->
+    <!-- ===================== ADMIN PANEL ===================== -->
   <div id="viewAdmin" class="view">
     <h1 class="page-title">Administration</h1>
     <div class="subtitle">Gère les employés, le planning et les heures travaillées</div>

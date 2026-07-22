@@ -657,6 +657,7 @@ function switchAdminTab(tab) {
   event.target.classList.add("active");
   document.getElementById("adminPanel" + tab.charAt(0).toUpperCase() + tab.slice(1)).classList.add("active");
   if (tab === "accounting") initAccountingTab();
+  if (tab === "settings") renderAdminShoppingList();
 }
 
 // ============================================
@@ -720,6 +721,7 @@ function openEmployeeModal(empId) {
     document.getElementById("employeeModalRate").value = emp.hourly_rate || "";
     document.getElementById("employeeModalComptabilite").checked = !!emp.comptabilite_access;
     document.getElementById("employeeModalCaissier").checked = !!emp.caissier_access;
+    document.getElementById("employeeModalListeCourses").checked = !!emp.liste_courses_access;
   } else {
     document.getElementById("employeeModalTitle").textContent = "Ajouter un employé";
     document.getElementById("employeeModalId").value = "";
@@ -728,6 +730,7 @@ function openEmployeeModal(empId) {
     document.getElementById("employeeModalRate").value = "";
     document.getElementById("employeeModalComptabilite").checked = false;
     document.getElementById("employeeModalCaissier").checked = false;
+    document.getElementById("employeeModalListeCourses").checked = false;
   }
 }
 function closeEmployeeModal() {
@@ -740,6 +743,7 @@ async function saveEmployee() {
   const rate = document.getElementById("employeeModalRate").value;
   const compta = document.getElementById("employeeModalComptabilite").checked;
   const caissier = document.getElementById("employeeModalCaissier").checked;
+  const listeCourses = document.getElementById("employeeModalListeCourses").checked;
   if (!name || !/^\d{4}$/.test(pin)) {
     alert("Merci de renseigner un nom et un code PIN à 4 chiffres.");
     return;
@@ -749,7 +753,8 @@ async function saveEmployee() {
     pin_code: pin,
     hourly_rate: rate ? parseFloat(rate) : null,
     comptabilite_access: compta,
-    caissier_access: caissier
+    caissier_access: caissier,
+    liste_courses_access: listeCourses
   };
   if (id) {
     const { error } = await sb.from("employees").update(payload).eq("id", id);
@@ -1687,8 +1692,14 @@ function myspaceCheckPin() {
     } else {
       accountingSection.style.display = "none";
     }
-    // Affiche la checklist caissier si l'employé a ce rôle
-    const caissierSection = document.getElementById("myspaceCaissierSection");
+    // Affiche la liste de courses si l'employé a ce rôle
+    const listeSection = document.getElementById("myspaceListeCoursesSection");
+    if (myspaceEmployee.liste_courses_access) {
+      listeSection.style.display = "block";
+      initMyspaceListeCourses();
+    } else {
+      listeSection.style.display = "none";
+    }
     if (myspaceEmployee.caissier_access) {
       caissierSection.style.display = "block";
       renderChecklist();
@@ -2772,6 +2783,190 @@ async function saveMonthBalance() {
   msg.style.color = "var(--green)";
   setTimeout(() => { msg.textContent = ""; }, 3000);
   renderAccountingSummary();
+}
+
+// ============================================
+// LISTE DE COURSES
+// ============================================
+let shoppingListCache = [];
+let whatsappContactsCache = [];
+
+async function initMyspaceListeCourses() {
+  const [itemsRes, contactsRes] = await Promise.all([
+    sb.from("shopping_list_items").select("*").eq("active", true).order("category").order("sort_order"),
+    sb.from("whatsapp_contacts").select("*").eq("active", true).order("name")
+  ]);
+  shoppingListCache = itemsRes.data || [];
+  whatsappContactsCache = contactsRes.data || [];
+  renderShoppingList();
+  renderWhatsappContacts();
+}
+
+function renderShoppingList() {
+  const container = document.getElementById("myspaceCoursesListContainer");
+  if (!shoppingListCache.length) {
+    container.innerHTML = `<div style="color:var(--gray);text-align:center;padding:16px;">Aucun article dans la liste.</div>`;
+    return;
+  }
+  // Grouper par catégorie
+  const byCategory = {};
+  shoppingListCache.forEach(item => {
+    if (!byCategory[item.category]) byCategory[item.category] = [];
+    byCategory[item.category].push(item);
+  });
+
+  let html = "";
+  Object.entries(byCategory).forEach(([cat, items]) => {
+    html += `<div style="margin-bottom:14px;">
+      <div style="font-weight:800;color:var(--bordeaux-dark);font-size:14px;margin-bottom:6px;padding-bottom:4px;border-bottom:2px solid var(--rose-light);">${cat}</div>`;
+    items.forEach(item => {
+      html += `<label style="display:flex;align-items:center;gap:10px;padding:8px 0;cursor:pointer;border-bottom:1px solid var(--rose-pale);">
+        <input type="checkbox" id="course_${item.id}" style="width:18px;height:18px;flex-shrink:0;accent-color:var(--bordeaux);">
+        <span style="font-size:14px;">${item.name}</span>
+      </label>`;
+    });
+    html += `</div>`;
+  });
+  container.innerHTML = html;
+}
+
+function renderWhatsappContacts() {
+  const el = document.getElementById("myspaceWhatsappContacts");
+  if (!whatsappContactsCache.length) {
+    el.innerHTML = `<div style="color:var(--gray);font-size:13px;">Aucun contact configuré. Demande à l'admin d'en ajouter.</div>`;
+    return;
+  }
+  el.innerHTML = whatsappContactsCache.map(c => `
+    <label style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--rose-pale);border-radius:10px;cursor:pointer;">
+      <input type="radio" name="whatsappContact" value="${c.phone}" style="accent-color:var(--bordeaux);">
+      <span style="font-weight:700;">${c.name}</span>
+      <span style="color:var(--gray);font-size:12px;">${c.phone}</span>
+    </label>`).join("");
+}
+
+function uncheckAllCourses() {
+  shoppingListCache.forEach(item => {
+    const cb = document.getElementById(`course_${item.id}`);
+    if (cb) cb.checked = false;
+  });
+}
+
+function sendCoursesWhatsApp() {
+  const checked = shoppingListCache.filter(item => {
+    const cb = document.getElementById(`course_${item.id}`);
+    return cb && cb.checked;
+  });
+  if (checked.length === 0) { alert("Cochez au moins un article avant d'envoyer."); return; }
+
+  const phoneEl = document.querySelector('input[name="whatsappContact"]:checked');
+  if (!phoneEl) { alert("Sélectionne un contact WhatsApp avant d'envoyer."); return; }
+  const phone = phoneEl.value.replace(/\D/g, "");
+
+  const today = new Date().toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
+  // Grouper par catégorie
+  const byCategory = {};
+  checked.forEach(item => {
+    if (!byCategory[item.category]) byCategory[item.category] = [];
+    byCategory[item.category].push(item.name);
+  });
+
+  let msg = `🛒 *Courses du ${today}*\n\n`;
+  Object.entries(byCategory).forEach(([cat, items]) => {
+    msg += `*${cat}*\n`;
+    items.forEach(name => { msg += `• ${name}\n`; });
+    msg += "\n";
+  });
+  msg += `_Envoyé depuis Shakpot Pointage_`;
+
+  const url = `https://wa.me/${phone}?text=${encodeURIComponent(msg)}`;
+  window.open(url, "_blank");
+  showToast("📲 WhatsApp ouvert !");
+  uncheckAllCourses();
+}
+
+// ============================================
+// GESTION LISTE DE COURSES (admin)
+// ============================================
+async function renderAdminShoppingList() {
+  const { data: items } = await sb.from("shopping_list_items").select("*").order("category").order("sort_order");
+  const { data: contacts } = await sb.from("whatsapp_contacts").select("*").order("name");
+
+  const itemsEl = document.getElementById("adminShoppingListItems");
+  const contactsEl = document.getElementById("adminWhatsappContacts");
+  if (!itemsEl) return;
+
+  // Articles groupés par catégorie
+  const byCategory = {};
+  (items || []).forEach(item => {
+    if (!byCategory[item.category]) byCategory[item.category] = [];
+    byCategory[item.category].push(item);
+  });
+
+  let html = "";
+  Object.entries(byCategory).forEach(([cat, catItems]) => {
+    html += `<div style="margin-bottom:12px;">
+      <div style="font-weight:800;color:var(--bordeaux-dark);font-size:13px;margin-bottom:4px;">${cat}</div>`;
+    catItems.forEach(item => {
+      html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--rose-pale);font-size:13px;">
+        <span style="${!item.active ? 'text-decoration:line-through;color:var(--gray);' : ''}">${item.name}</span>
+        <span>
+          <button onclick="toggleShoppingItem('${item.id}',${!item.active})" style="border:none;background:none;cursor:pointer;font-size:12px;color:var(--gray);">${item.active ? '🔕' : '✓'}</button>
+          <button onclick="deleteShoppingItem('${item.id}')" style="border:none;background:none;cursor:pointer;font-size:12px;color:var(--red-text);">✕</button>
+        </span>
+      </div>`;
+    });
+    html += `</div>`;
+  });
+  itemsEl.innerHTML = html || `<div style="color:var(--gray);">Aucun article.</div>`;
+
+  // Contacts WhatsApp
+  if (contactsEl) {
+    contactsEl.innerHTML = (contacts || []).map(c => `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--rose-pale);font-size:13px;">
+        <span><strong>${c.name}</strong> — ${c.phone}</span>
+        <button onclick="deleteWhatsappContact('${c.id}')" style="border:none;background:none;cursor:pointer;color:var(--red-text);">✕</button>
+      </div>`).join("") || `<div style="color:var(--gray);">Aucun contact.</div>`;
+  }
+}
+
+async function addShoppingItem() {
+  const cat = document.getElementById("adminNewCategory").value.trim();
+  const name = document.getElementById("adminNewItem").value.trim();
+  if (!cat || !name) { alert("Merci de remplir la catégorie et l'article."); return; }
+  await sb.from("shopping_list_items").insert({ category: cat, name, sort_order: 99 });
+  document.getElementById("adminNewItem").value = "";
+  showToast(`✓ "${name}" ajouté`);
+  renderAdminShoppingList();
+}
+
+async function toggleShoppingItem(id, active) {
+  await sb.from("shopping_list_items").update({ active }).eq("id", id);
+  renderAdminShoppingList();
+}
+
+async function deleteShoppingItem(id) {
+  if (!confirm("Supprimer cet article ?")) return;
+  await sb.from("shopping_list_items").delete().eq("id", id);
+  showToast("🗑 Article supprimé");
+  renderAdminShoppingList();
+}
+
+async function addWhatsappContact() {
+  const name = document.getElementById("adminContactName").value.trim();
+  const phone = document.getElementById("adminContactPhone").value.trim();
+  if (!name || !phone) { alert("Merci de remplir le nom et le numéro."); return; }
+  await sb.from("whatsapp_contacts").insert({ name, phone });
+  document.getElementById("adminContactName").value = "";
+  document.getElementById("adminContactPhone").value = "";
+  showToast(`✓ ${name} ajouté`);
+  renderAdminShoppingList();
+}
+
+async function deleteWhatsappContact(id) {
+  if (!confirm("Supprimer ce contact ?")) return;
+  await sb.from("whatsapp_contacts").delete().eq("id", id);
+  showToast("🗑 Contact supprimé");
+  renderAdminShoppingList();
 }
 
 // ============================================

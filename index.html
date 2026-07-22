@@ -840,6 +840,18 @@ td.today-col.emp-col{ background: var(--rose-light) !important; color: var(--bor
   </div>
 
     <!-- ===================== ADMIN PANEL ===================== -->
+
+  <!-- Login admin (page de mot de passe) -->
+  <div id="viewAdminLogin" class="view">
+    <div class="kiosk-card" style="max-width:400px;margin:0 auto;">
+      <h2 style="margin-top:0;color:var(--bordeaux-dark);">🔐 Administration</h2>
+      <p style="color:var(--gray);font-size:14px;">Entre le mot de passe admin pour accéder au panneau.</p>
+      <input type="password" id="adminPassword" placeholder="Mot de passe" style="width:100%;padding:14px;border-radius:10px;border:2px solid var(--rose-light);font-size:16px;margin-bottom:12px;" onkeydown="if(event.key==='Enter')checkAdminLogin()">
+      <button class="btn full" onclick="checkAdminLogin()">Accéder</button>
+      <div id="adminLoginError" style="display:none;color:var(--red-text);font-size:13px;margin-top:8px;text-align:center;">Mot de passe incorrect.</div>
+    </div>
+  </div>
+
   <div id="viewAdmin" class="view">
     <h1 class="page-title">Administration</h1>
     <div class="subtitle">Gère les employés, le planning et les heures travaillées</div>

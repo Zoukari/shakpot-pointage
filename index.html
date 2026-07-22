@@ -749,6 +749,36 @@ td.today-col.emp-col{ background: var(--rose-light) !important; color: var(--bor
       </div>
 
       <!-- Section comptabilité (visible uniquement si l'employé a l'accès) -->
+      <!-- Section liste de courses -->
+      <div id="myspaceListeCoursesSection" style="display:none;">
+        <h2 style="color:var(--bordeaux-dark);margin-top:8px;">🛒 Liste de courses</h2>
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+            <p style="margin:0;color:var(--gray);font-size:13px;">Cochez ce qui manque, puis envoyez via WhatsApp.</p>
+            <button onclick="uncheckAllCourses()" style="border:none;background:none;color:var(--gray);font-size:12px;cursor:pointer;text-decoration:underline;">Tout décocher</button>
+          </div>
+          <div id="myspaceCoursesListContainer">Chargement…</div>
+          <div style="margin-top:16px;padding-top:16px;border-top:2px solid var(--rose-light);">
+            <div style="font-weight:700;color:var(--bordeaux-dark);margin-bottom:10px;">📲 Envoyer à :</div>
+            <div id="myspaceWhatsappContacts" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;"></div>
+            <button class="btn full" style="background:#25D366;" onclick="sendCoursesWhatsApp()">📲 Envoyer via WhatsApp</button>
+          </div>
+        </div>
+
+        <!-- Gestion de la liste (admin uniquement via Mon espace) -->
+        <div id="myspaceCoursesAdminSection" style="display:none;">
+          <h3 style="color:var(--bordeaux-dark);">⚙️ Gérer la liste</h3>
+          <div class="card">
+            <div style="display:flex;gap:8px;margin-bottom:12px;">
+              <input type="text" id="newCoursesCategory" placeholder="Catégorie" style="flex:1;padding:10px;border-radius:8px;border:2px solid var(--rose-light);font-size:14px;">
+              <input type="text" id="newCoursesItem" placeholder="Article" style="flex:2;padding:10px;border-radius:8px;border:2px solid var(--rose-light);font-size:14px;">
+              <button class="btn" onclick="addShoppingItem()">+</button>
+            </div>
+            <div id="myspaceCoursesAdminList"></div>
+          </div>
+        </div>
+      </div>
+
       <div id="myspaceAccountingSection" style="display:none;">
         <h2 style="color:var(--bordeaux-dark);margin-top:8px;">🚚 Mes courses</h2>
 
@@ -908,6 +938,30 @@ td.today-col.emp-col{ background: var(--rose-light) !important; color: var(--bor
         <h3>🔄 Synchroniser les dettes livreur</h3>
         <p style="color:var(--gray);font-size:14px;margin-top:0;">Recalcule automatiquement le montant "Payé" de chaque dette livreur depuis les courses réelles. À utiliser si la dette cumulée ne correspond pas.</p>
         <button class="btn full" onclick="resyncAllDebts()">Recalculer toutes les dettes</button>
+      </div>
+
+      <!-- Gestion liste de courses -->
+      <div class="card">
+        <h3>🛒 Liste de courses</h3>
+        <p style="color:var(--gray);font-size:13px;margin-top:0;">Ajoute ou désactive des articles. Les articles désactivés (🔕) n'apparaissent plus dans Mon espace.</p>
+        <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+          <input type="text" id="adminNewCategory" placeholder="Catégorie (ex: Viandes)" style="flex:1;min-width:120px;padding:10px;border-radius:8px;border:2px solid var(--rose-light);font-size:14px;">
+          <input type="text" id="adminNewItem" placeholder="Article (ex: Poulet filet)" style="flex:2;min-width:150px;padding:10px;border-radius:8px;border:2px solid var(--rose-light);font-size:14px;">
+          <button class="btn" onclick="addShoppingItem()">+ Ajouter</button>
+        </div>
+        <div id="adminShoppingListItems" style="max-height:400px;overflow-y:auto;"></div>
+      </div>
+
+      <!-- Contacts WhatsApp -->
+      <div class="card">
+        <h3>📲 Contacts WhatsApp</h3>
+        <p style="color:var(--gray);font-size:13px;margin-top:0;">Les employés choisissent à qui envoyer la liste de courses.</p>
+        <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+          <input type="text" id="adminContactName" placeholder="Nom (ex: Livreur)" style="flex:1;min-width:100px;padding:10px;border-radius:8px;border:2px solid var(--rose-light);font-size:14px;">
+          <input type="text" id="adminContactPhone" placeholder="Numéro avec indicatif (ex: 25377000000)" style="flex:2;min-width:150px;padding:10px;border-radius:8px;border:2px solid var(--rose-light);font-size:14px;">
+          <button class="btn" onclick="addWhatsappContact()">+ Ajouter</button>
+        </div>
+        <div id="adminWhatsappContacts"></div>
       </div>
 
       <div class="card" style="max-width:480px;">
@@ -1085,6 +1139,10 @@ td.today-col.emp-col{ background: var(--rose-light) !important; color: var(--bor
     <label style="display:flex;align-items:center;gap:8px;margin-top:10px;">
       <input type="checkbox" id="employeeModalCaissier" style="width:auto;">
       Rôle caissier (accès à la checklist)
+    </label>
+    <label style="display:flex;align-items:center;gap:8px;margin-top:10px;">
+      <input type="checkbox" id="employeeModalListeCourses" style="width:auto;">
+      Accès à la liste de courses (commande WhatsApp)
     </label>
     <div class="modal-actions">
       <button class="btn secondary full" onclick="closeEmployeeModal()">Annuler</button>

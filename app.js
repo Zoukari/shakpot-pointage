@@ -85,8 +85,7 @@ function switchMode(mode) {
   } else if (mode === "myspace") {
     document.getElementById("viewAdminLogin").classList.remove("active");
     document.getElementById("viewAdmin").classList.remove("active");
-    myspaceReset();
-    loadMyspaceEmployees(); // Force le rechargement des noms à chaque ouverture
+    myspaceReset(); // myspaceReset appelle déjà loadMyspaceEmployees
   } else if (mode === "admin") {
     document.getElementById("viewKiosk").classList.remove("active");
     document.getElementById("viewMyspace").classList.remove("active");

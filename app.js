@@ -86,6 +86,7 @@ function switchMode(mode) {
     document.getElementById("viewAdminLogin").classList.remove("active");
     document.getElementById("viewAdmin").classList.remove("active");
     myspaceReset();
+    loadMyspaceEmployees(); // Force le rechargement des noms à chaque ouverture
   } else if (mode === "admin") {
     document.getElementById("viewKiosk").classList.remove("active");
     document.getElementById("viewMyspace").classList.remove("active");
@@ -334,13 +335,11 @@ async function checkPin() {
 }
 
 async function setupChooseTypeStep() {
-  // Regarde le dernier pointage du jour pour cet employé
-  const today = fmtDate(new Date());
+  // Regarde le DERNIER pointage absolu (peu importe la date)
   const { data } = await sb
     .from("time_logs")
     .select("type")
     .eq("employee_id", selectedEmployee.id)
-    .gte("timestamp", `${today}T00:00:00`)
     .order("timestamp", { ascending: false })
     .limit(1);
 
@@ -363,17 +362,20 @@ async function setupChooseTypeStep() {
     btnIn.disabled = true;
     btnIn.style.opacity = "0.35";
     btnIn.style.background = "var(--gray)";
+    btnIn.style.textDecoration = "line-through";
     subtitle.textContent = "Tu es déjà pointé(e) en arrivée — tu peux uniquement pointer ta sortie.";
   } else if (lastType === "out") {
     // Dernier pointage = sortie → seule l'entrée est disponible
     btnOut.disabled = true;
     btnOut.style.opacity = "0.35";
     btnOut.style.background = "var(--gray)";
+    btnOut.style.textDecoration = "line-through";
     subtitle.textContent = "Tu es déjà pointé(e) en sortie — tu peux uniquement pointer ton arrivée.";
   } else {
-    // Aucun pointage aujourd'hui → les deux sont disponibles, mais on suggère l'entrée
-    subtitle.textContent = "Premier pointage du jour — bienvenue !";
+    subtitle.textContent = "Premier pointage — bienvenue !";
   }
+  btnIn.style.textDecoration = lastType === "in" ? "line-through" : "none";
+  btnOut.style.textDecoration = lastType === "out" ? "line-through" : "none";
 }
 
 let pendingLogType = "in";

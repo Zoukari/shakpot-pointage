@@ -773,10 +773,11 @@ td.today-col.emp-col{ background: var(--rose-light) !important; color: var(--bor
         <div class="card">
           <div class="toolbar">
             <label style="font-weight:700;font-size:14px;">Période :</label>
-            <select id="myspaceHoursPeriodType" onchange="renderMyspaceHours()">
+            <select id="myspaceHoursPeriodType" onchange="renderMyspaceHours();togglePeriodDate('myspaceHoursPeriodType','myspaceHoursPeriodDate')">
               <option value="day">Jour</option>
               <option value="week" selected>Semaine</option>
               <option value="month">Mois</option>
+              <option value="all">Tout</option>
             </select>
             <input type="date" id="myspaceHoursPeriodDate" onchange="renderMyspaceHours()">
           </div>
@@ -865,10 +866,11 @@ td.today-col.emp-col{ background: var(--rose-light) !important; color: var(--bor
         <div class="card" style="margin-top:12px;">
           <div class="toolbar">
             <label style="font-weight:700;font-size:14px;">Historique :</label>
-            <select id="myspaceDebtPeriodType" onchange="renderMyspaceDebtSummary()" style="padding:8px;border-radius:8px;border:2px solid var(--rose-light);font-size:14px;">
+            <select id="myspaceDebtPeriodType" onchange="renderMyspaceDebtSummary();togglePeriodDate('myspaceDebtPeriodType','myspaceDebtPeriodDate')" style="padding:8px;border-radius:8px;border:2px solid var(--rose-light);font-size:14px;">
               <option value="day">Jour</option>
               <option value="week">Semaine</option>
               <option value="month" selected>Mois</option>
+              <option value="all">Tout</option>
             </select>
             <input type="date" id="myspaceDebtPeriodDate" onchange="renderMyspaceDebtSummary()" style="padding:8px;border-radius:8px;border:2px solid var(--rose-light);font-size:14px;">
           </div>
@@ -943,10 +945,11 @@ td.today-col.emp-col{ background: var(--rose-light) !important; color: var(--bor
       <div class="card">
         <div class="toolbar">
           <label style="font-weight:700;font-size:14px;">Période :</label>
-          <select id="hoursPeriodType" onchange="renderHoursAndLogs()">
+          <select id="hoursPeriodType" onchange="renderHoursAndLogs();togglePeriodDate('hoursPeriodType','hoursPeriodDate')">
             <option value="day">Jour</option>
             <option value="week" selected>Semaine</option>
             <option value="month">Mois</option>
+            <option value="all">Tout</option>
           </select>
           <input type="date" id="hoursPeriodDate" onchange="renderHoursAndLogs()">
         </div>
@@ -958,7 +961,8 @@ td.today-col.emp-col{ background: var(--rose-light) !important; color: var(--bor
         <h3>Pointages détaillés</h3>
         <div class="toolbar">
           <label style="font-weight:700;font-size:14px;">Période :</label>
-          <select id="logsPeriodType" onchange="renderLogsTable()">
+          <select id="logsPeriodType" onchange="renderLogsTable();togglePeriodDate('logsPeriodType','logsPeriodDate')">
+            <option value="day">Jour</option>
             <option value="week" selected>Semaine</option>
             <option value="month">Mois</option>
             <option value="all">Tout</option>
@@ -1112,10 +1116,11 @@ td.today-col.emp-col{ background: var(--rose-light) !important; color: var(--bor
       <div class="card">
         <div class="toolbar">
           <label style="font-weight:700;font-size:14px;">Période :</label>
-          <select id="accountingPeriodType" onchange="renderAccountingSummary()">
+          <select id="accountingPeriodType" onchange="renderAccountingSummary();togglePeriodDate('accountingPeriodType','accountingPeriodDate')">
             <option value="day">Jour</option>
             <option value="week">Semaine</option>
             <option value="month" selected>Mois</option>
+            <option value="all">Tout</option>
           </select>
           <input type="date" id="accountingPeriodDate" onchange="renderAccountingSummary()">
         </div>

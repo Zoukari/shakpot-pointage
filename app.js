@@ -1084,6 +1084,13 @@ function getPeriodRange() {
   return getPeriodRangeFor("hoursPeriodType", "hoursPeriodDate");
 }
 
+// Masque le champ date quand "Tout" est sélectionné
+function togglePeriodDate(selectId, dateId) {
+  const type = document.getElementById(selectId).value;
+  const dateEl = document.getElementById(dateId);
+  if (dateEl) dateEl.style.display = type === "all" ? "none" : "";
+}
+
 // Calcule les heures réellement travaillées par employé sur une période, à partir des paires in/out
 // Convertit "HH:MM" en Date pour un jour donné (gère le passage minuit : si endTime < startTime, c'est le lendemain)
 function timeStrToDate(dayDate, timeStr, isEndOfOvernightShift) {

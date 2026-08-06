@@ -1336,7 +1336,7 @@ async function renderHoursTable() {
   const table = document.getElementById("hoursTable");
   table.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--gray);padding:20px;">Chargement…</td></tr>`;
 
-  const [logsRes, shiftsData, adjustmentsRes] = await Promise.all([
+  const [logsRes, shiftsData, adjustmentsRes, monthAdjRes] = await Promise.all([
     sb.from("time_logs").select("*")
       .gte("timestamp", start.toISOString())
       .lt("timestamp", end.toISOString()),
@@ -1344,12 +1344,22 @@ async function renderHoursTable() {
     sb.from("hours_adjustments").select("*")
       .eq("period_type", "day")
       .gte("period_date", fmtDate(start))
-      .lt("period_date", fmtDate(endStrict))
+      .lt("period_date", fmtDate(endStrict)),
+    sb.from("hours_adjustments").select("*")
+      .eq("period_type", "month")
+      .gte("period_date", fmtDate(start))
+      .lte("period_date", fmtDate(endStrict))
   ]);
 
   if (logsRes.error) { console.error(logsRes.error); return; }
   timeLogsCache = logsRes.data || [];
   const allShifts = shiftsData;
+
+  // Ajustements mensuels (priorité absolue sur tout le reste)
+  const monthAdjMap = {};
+  (monthAdjRes.data || []).forEach(a => {
+    monthAdjMap[a.employee_id] = parseFloat(a.total_hours);
+  });
 
   const dayAdjustmentsMap = {};
   (adjustmentsRes.data || []).forEach(a => {
@@ -1368,39 +1378,42 @@ async function renderHoursTable() {
   </tr>`;
 
   for (const emp of employees) {
-    const hasAdjustmentInPeriod = !!dayAdjustmentsMap[emp.id];
+    const hasMonthAdj = monthAdjMap[emp.id] !== undefined;
+    const hasDayAdj = !!dayAdjustmentsMap[emp.id];
+    const hasAdjustmentInPeriod = hasMonthAdj || hasDayAdj;
 
-    // Heures travaillées avec détail retards
-    const detail = computeWorkedHoursDetailed(timeLogsCache, emp.id, start, endStrict, allShifts);
-    let worked = detail.worked;
-    const lateHours = detail.late;
-    const earlyHours = detail.early;
+    let worked, lateHours = 0, earlyHours = 0;
 
-    // Ajouter les ajustements manuels
-    const empAdj = dayAdjustmentsMap[emp.id] || {};
-    let adjWorked = 0;
-    // Pour les jours avec ajustement, remplacer le calcul auto
-    if (hasAdjustmentInPeriod) {
-      worked = computeWorkedHoursWithAdjustments(emp.id, start, endStrict, timeLogsCache, dayAdjustmentsMap, allShifts);
+    if (hasMonthAdj) {
+      // Ajustement mensuel = valeur finale validée, priorité absolue
+      worked = monthAdjMap[emp.id];
+    } else {
+      const detail = computeWorkedHoursDetailed(timeLogsCache, emp.id, start, endStrict, allShifts);
+      worked = detail.worked;
+      lateHours = detail.late;
+      earlyHours = detail.early;
+      if (hasDayAdj) {
+        worked = computeWorkedHoursWithAdjustments(emp.id, start, endStrict, timeLogsCache, dayAdjustmentsMap, allShifts);
+      }
     }
 
     const theoretical = computeTheoreticalHours(emp.id, start, endStrict, allShifts, dayAdjustmentsMap);
     const diff = worked - theoretical;
     let diffClass = diff > 0.05 ? "hours-over" : diff < -0.05 ? "hours-under" : "hours-ok";
 
-    // Salaire : calcul précis en minutes
+    // Salaire exact en minutes
     let salaire = null;
     if (emp.hourly_rate) {
       const totalMinutes = Math.round(worked * 60);
       salaire = Math.round((totalMinutes / 60) * emp.hourly_rate);
     }
 
+    const corrLabel = hasMonthAdj ? ' <span class="pill gray" style="font-size:11px;" title="Correction mensuelle validée">corrigé</span>'
+      : hasDayAdj ? ' <span class="pill gray" style="font-size:11px;" title="Contient des corrections">corrigé</span>' : '';
+
     html += `<tr>
       <td class="emp-col" style="font-weight:700;">${emp.full_name}</td>
-      <td>
-        ${fmtHours(worked)}
-        ${hasAdjustmentInPeriod ? ' <span class="pill gray" style="font-size:11px;" title="Contient des corrections manuelles">corrigé</span>' : ''}
-      </td>
+      <td>${fmtHours(worked)}${corrLabel}</td>
       <td>${fmtHours(theoretical)}</td>
       <td style="color:var(--red-text);">${lateHours > 0.01 ? '−' + fmtHours(lateHours) : '<span style="color:var(--green)">✓</span>'}</td>
       <td class="${diffClass}">${diff >= 0 ? "+" : ""}${fmtHours(diff)}</td>

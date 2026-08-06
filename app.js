@@ -1412,14 +1412,16 @@ async function renderHoursTable() {
       : hasDayAdj ? ' <span class="pill gray" style="font-size:11px;" title="Contient des corrections">corrigé</span>' : '';
 
     html += `<tr>
-      <td class="emp-col" style="font-weight:700;">${emp.full_name}</td>
+      <td class="emp-col" style="font-weight:700;cursor:pointer;" onclick="openDayDetailModal('${emp.id}','${emp.full_name}')">${emp.full_name}</td>
       <td>${fmtHours(worked)}${corrLabel}</td>
       <td>${fmtHours(theoretical)}</td>
       <td style="color:var(--red-text);">${lateHours > 0.01 ? '−' + fmtHours(lateHours) : '<span style="color:var(--green)">✓</span>'}</td>
       <td class="${diffClass}">${diff >= 0 ? "+" : ""}${fmtHours(diff)}</td>
       <td style="font-weight:700;">${salaire !== null ? salaire.toLocaleString('fr-FR') + ' FDJ' : '—'}</td>
-      <td>
-        <button class="small-link" style="background:none;border:none;font-size:12px;" onclick="openAdjustmentModal('${emp.id}', 'day', '${fmtDate(new Date())}')">Corriger</button>
+      <td style="white-space:nowrap;">
+        <button class="small-link" style="background:none;border:none;font-size:12px;" onclick="openDayDetailModal('${emp.id}','${emp.full_name}')">📋 Détail</button>
+        <button class="small-link" style="background:none;border:none;font-size:12px;" onclick="openCompDaysModal('${emp.id}','${emp.full_name}')">🌙 Repos</button>
+        <button class="small-link" style="background:none;border:none;font-size:12px;" onclick="openAdjustmentModal('${emp.id}', 'day', '${fmtDate(new Date())}')">✏ Corriger</button>
         ${hasAdjustmentInPeriod ? `<button class="small-link" style="background:none;border:none;color:var(--red-text);font-size:12px;" onclick="resetHoursForPeriod('${emp.id}', '${fmtDate(start)}', '${fmtDate(endStrict)}')">Reset</button>` : ''}
       </td>
     </tr>`;
@@ -3099,6 +3101,243 @@ async function deleteWhatsappContact(id) {
   await sb.from("whatsapp_contacts").delete().eq("id", id);
   showToast("🗑 Contact supprimé");
   renderAdminShoppingList();
+}
+
+// ============================================
+// DÉTAIL PAR JOUR
+// ============================================
+async function openDayDetailModal(empId, empName) {
+  document.getElementById("dayDetailTitle").textContent = `📋 ${empName} — Détail des journées`;
+  document.getElementById("dayDetailContent").innerHTML = `<div style="text-align:center;padding:20px;color:var(--gray);">Chargement…</div>`;
+  document.getElementById("dayDetailModalOverlay").classList.add("active");
+
+  const { start, end, endStrict } = getPeriodRange();
+
+  const [logsRes, shiftsData, adjRes] = await Promise.all([
+    sb.from("time_logs").select("*").eq("employee_id", empId)
+      .gte("timestamp", start.toISOString()).lt("timestamp", end.toISOString())
+      .order("timestamp"),
+    loadAllShifts(),
+    sb.from("hours_adjustments").select("*").eq("employee_id", empId)
+      .gte("period_date", fmtDate(start)).lt("period_date", fmtDate(endStrict))
+  ]);
+
+  const logs = logsRes.data || [];
+  const allShifts = shiftsData;
+  const adjMap = {};
+  (adjRes.data || []).forEach(a => { adjMap[a.period_date] = a; });
+
+  // Construire la liste de jours de la période
+  const days = [];
+  let cursor = new Date(start);
+  while (cursor < endStrict) {
+    days.push(fmtDate(new Date(cursor)));
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  // Dédoublonner les logs
+  const seen = new Set();
+  const cleanLogs = logs.filter(l => {
+    const key = `${l.type}_${Math.floor(new Date(l.timestamp).getTime() / 60000)}`;
+    if (seen.has(key)) return false;
+    seen.add(key); return true;
+  });
+
+  const dayNames = ["Dim","Lun","Mar","Mer","Jeu","Ven","Sam"];
+  let html = `<table style="width:100%;font-size:12px;border-collapse:collapse;">
+    <tr style="background:var(--bordeaux-dark);color:#fff;">
+      <th style="padding:6px 8px;text-align:left;">Date</th>
+      <th style="padding:6px 8px;">Prévu</th>
+      <th style="padding:6px 8px;">Entrée</th>
+      <th style="padding:6px 8px;">Sortie</th>
+      <th style="padding:6px 8px;">Retenu</th>
+      <th style="padding:6px 8px;">Retard</th>
+      <th style="padding:6px 8px;">Statut</th>
+    </tr>`;
+
+  for (const dateStr of days) {
+    const d = new Date(dateStr + "T00:00:00");
+    const dow = d.getDay();
+    const dayName = dayNames[dow];
+
+    // Planning du jour
+    const dayShifts = allShifts.filter(s =>
+      s.employee_id === empId && s.day_of_week === dow
+    );
+    const shift = dayShifts[0];
+    const isRest = shift && shift.is_rest;
+    const hasShift = shift && !isRest;
+
+    // Ajustement manuel
+    const adj = adjMap[dateStr];
+
+    // Pointages du jour (et jusqu'à 8h le lendemain pour nocturne)
+    const nextDay = new Date(d); nextDay.setDate(nextDay.getDate() + 1); nextDay.setHours(8,0,0,0);
+    const dayLogs = cleanLogs.filter(l => {
+      const t = new Date(l.timestamp);
+      return t >= d && t < nextDay;
+    });
+
+    const inLog = dayLogs.find(l => l.type === "in");
+    const outLog = dayLogs.find(l => l.type === "out");
+
+    // Calcul
+    let workedStr = "—", retardStr = "—", statutStr = "", statutColor = "";
+    let prevuStr = "—";
+
+    if (isRest && !inLog) {
+      statutStr = "Repos"; statutColor = "var(--gray)";
+    } else if (adj && adj.total_hours === 0 && !inLog) {
+      statutStr = "Absence"; statutColor = "var(--red-text)";
+    } else if (adj) {
+      const h = Math.floor(adj.total_hours); const m = Math.round((adj.total_hours - h) * 60);
+      workedStr = `${h}h${String(m).padStart(2,"0")}`;
+      statutStr = "Corrigé ✏"; statutColor = "var(--bordeaux)";
+    } else if (hasShift) {
+      const [sh, sm] = shift.start_time.split(":").map(Number);
+      const [eh, em] = shift.end_time.split(":").map(Number);
+      const isOvernight = (eh*60+em) <= (sh*60+sm);
+      const plannedStart = new Date(d); plannedStart.setHours(sh, sm, 0, 0);
+      const plannedEnd = new Date(d); plannedEnd.setHours(eh, em, 0, 0);
+      if (isOvernight) plannedEnd.setDate(plannedEnd.getDate() + 1);
+      prevuStr = `${shift.start_time.slice(0,5)}→${shift.end_time.slice(0,5)}`;
+
+      if (inLog) {
+        const realIn = new Date(inLog.timestamp);
+        const realOut = outLog ? new Date(outLog.timestamp) : plannedEnd;
+        const effIn = realIn < plannedStart ? plannedStart : realIn;
+        const effOut = realOut > plannedEnd ? plannedEnd : realOut;
+        const workedMs = Math.max(0, effOut - effIn);
+        const lateMs = Math.max(0, realIn - plannedStart);
+        const wH = Math.floor(workedMs/3600000);
+        const wM = Math.round((workedMs % 3600000) / 60000);
+        workedStr = `${wH}h${String(wM).padStart(2,"0")}`;
+        if (lateMs > 60000) {
+          const lM = Math.round(lateMs / 60000);
+          retardStr = `−${lM < 60 ? lM+"min" : Math.floor(lM/60)+"h"+String(lM%60).padStart(2,"0")}`;
+          statutStr = "Retard"; statutColor = "var(--red-text)";
+        } else {
+          statutStr = outLog ? "✓" : "Sortie implicite"; statutColor = outLog ? "var(--green)" : "var(--gray)";
+        }
+      } else {
+        statutStr = "Manquant"; statutColor = "var(--red-text)"; workedStr = "0h00";
+      }
+    } else if (inLog) {
+      statutStr = "Hors planning"; statutColor = "var(--bordeaux)";
+      if (outLog) {
+        const ms = new Date(outLog.timestamp) - new Date(inLog.timestamp);
+        const wH = Math.floor(ms/3600000); const wM = Math.round((ms%3600000)/60000);
+        workedStr = `${wH}h${String(wM).padStart(2,"0")}`;
+      }
+    } else {
+      statutStr = "—"; statutColor = "var(--gray)";
+    }
+
+    const inStr = inLog ? new Date(inLog.timestamp).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"}) : "—";
+    const outStr = outLog ? new Date(outLog.timestamp).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"}) : "—";
+    const rowBg = isRest ? "var(--rose-pale)" : "";
+
+    html += `<tr style="border-bottom:1px solid var(--rose-light);background:${rowBg};">
+      <td style="padding:5px 8px;font-weight:700;">${dayName} ${dateStr.slice(8)}</td>
+      <td style="padding:5px 8px;text-align:center;font-size:11px;color:var(--gray);">${prevuStr}</td>
+      <td style="padding:5px 8px;text-align:center;">${inStr}</td>
+      <td style="padding:5px 8px;text-align:center;">${outStr}</td>
+      <td style="padding:5px 8px;text-align:center;font-weight:700;">${workedStr}</td>
+      <td style="padding:5px 8px;text-align:center;color:var(--red-text);">${retardStr}</td>
+      <td style="padding:5px 8px;text-align:center;font-size:11px;color:${statutColor};">${statutStr}</td>
+    </tr>`;
+  }
+  html += `</table>`;
+  document.getElementById("dayDetailContent").innerHTML = html;
+}
+
+function closeDayDetailModal() {
+  document.getElementById("dayDetailModalOverlay").classList.remove("active");
+}
+
+// ============================================
+// REPOS COMPENSATOIRES
+// ============================================
+let currentCompEmpId = null;
+
+async function openCompDaysModal(empId, empName) {
+  currentCompEmpId = empId;
+  document.getElementById("compDaysTitle").textContent = `🌙 ${empName} — Repos compensatoires`;
+  document.getElementById("compDaysModalOverlay").classList.add("active");
+  await loadCompDays();
+}
+
+async function loadCompDays() {
+  const { data } = await sb.from("compensatory_days").select("*")
+    .eq("employee_id", currentCompEmpId).order("acquired_date");
+  const available = (data || []).filter(d => d.status === "available");
+  const used = (data || []).filter(d => d.status === "used");
+
+  let html = "";
+
+  // Compteur
+  html += `<div style="display:flex;gap:10px;margin-bottom:14px;">
+    <div style="flex:1;background:var(--green-bg);border-radius:10px;padding:12px;text-align:center;">
+      <div style="font-size:11px;color:var(--green);font-weight:700;">Disponibles</div>
+      <div style="font-size:28px;font-weight:800;color:var(--green);">${available.length}</div>
+    </div>
+    <div style="flex:1;background:var(--rose-pale);border-radius:10px;padding:12px;text-align:center;">
+      <div style="font-size:11px;color:var(--gray);font-weight:700;">Utilisés</div>
+      <div style="font-size:28px;font-weight:800;color:var(--gray);">${used.length}</div>
+    </div>
+  </div>`;
+
+  if (available.length > 0) {
+    html += `<div style="font-weight:700;color:var(--bordeaux-dark);margin-bottom:6px;">✅ Disponibles</div>`;
+    available.forEach(d => {
+      html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--rose-light);font-size:13px;">
+        <span>📅 ${d.acquired_date} — ${d.acquired_hours}h travaillées<br><span style="color:var(--gray);font-size:11px;">${d.acquired_note || ''}</span></span>
+        <button onclick="useCompDay('${d.id}')" style="border:1px solid var(--bordeaux);background:transparent;border-radius:8px;padding:4px 10px;cursor:pointer;font-size:12px;color:var(--bordeaux);">Utiliser</button>
+      </div>`;
+    });
+  }
+
+  if (used.length > 0) {
+    html += `<div style="font-weight:700;color:var(--gray);margin:12px 0 6px;">✓ Utilisés</div>`;
+    used.forEach(d => {
+      html += `<div style="padding:6px 0;border-bottom:1px solid var(--rose-pale);font-size:12px;color:var(--gray);">
+        ${d.acquired_date} → utilisé le ${d.used_date || '?'} ${d.used_note ? '— '+d.used_note : ''}
+      </div>`;
+    });
+  }
+
+  if (!available.length && !used.length) {
+    html += `<div style="text-align:center;color:var(--gray);padding:16px;">Aucun repos compensatoire.</div>`;
+  }
+
+  document.getElementById("compDaysContent").innerHTML = html;
+}
+
+async function saveCompDay() {
+  const date = document.getElementById("compAcquiredDate").value;
+  const hours = parseFloat(document.getElementById("compAcquiredHours").value);
+  const note = document.getElementById("compAcquiredNote").value.trim();
+  if (!date || isNaN(hours)) { alert("Merci de remplir la date et les heures."); return; }
+  await sb.from("compensatory_days").insert({
+    employee_id: currentCompEmpId, acquired_date: date,
+    acquired_hours: hours, acquired_note: note || null, status: "available"
+  });
+  document.getElementById("compAcquiredDate").value = "";
+  document.getElementById("compAcquiredHours").value = "";
+  document.getElementById("compAcquiredNote").value = "";
+  showToast("✓ Repos compensatoire ajouté");
+  await loadCompDays();
+}
+
+async function useCompDay(id) {
+  const usedDate = prompt("Date d'utilisation (AAAA-MM-JJ) :");
+  if (!usedDate) return;
+  const note = prompt("Note (optionnel) :") || null;
+  await sb.from("compensatory_days").update({
+    status: "used", used_date: usedDate, used_note: note
+  }).eq("id", id);
+  showToast("✓ Repos utilisé");
+  await loadCompDays();
 }
 
 // ============================================

@@ -1097,14 +1097,14 @@ function timeStrToDate(dayDate, timeStr, isEndOfOvernightShift) {
   const [h, m] = timeStr.split(":").map(Number);
   const d = new Date(dayDate);
   d.setHours(h, m, 0, 0);
-  if (isEndOfOvernightShift) d.setDate(d.getDate() + 1); // sortie le lendemain
+  if (isEndOfOvernightShift) d.setDate(d.getDate() + 1);
   return d;
 }
 
-// Pour une paire entrée/sortie réelle, trouve le shift prévu le plus proche ce jour-là
-// et borne l'entrée et la sortie sur les horaires prévus.
-// Retourne les ms comptabilisées (0 si aucun shift trouvé pour ce jour).
-function clampPairToShift(realIn, realOut, employeeId, allShifts) {
+// Retourne { workedMs, lateMs, earlyMs } pour une paire entrée/sortie
+// lateMs = retard (arrivée après heure prévue)
+// earlyMs = sortie anticipée (départ avant heure prévue)
+function clampPairToShiftDetail(realIn, realOut, employeeId, allShifts) {
   const dayDate = new Date(realIn);
   dayDate.setHours(0, 0, 0, 0);
   const dayOfWeek = dayDate.getDay();
@@ -1114,30 +1114,96 @@ function clampPairToShift(realIn, realOut, employeeId, allShifts) {
   );
 
   if (dayShifts.length === 0) {
-    // Pas de shift prévu ce jour — on compte les heures réelles (cas exceptionnel, jour non planifié)
-    return (realOut - realIn);
+    return { workedMs: (realOut - realIn), lateMs: 0, earlyMs: 0 };
   }
 
-  let totalMs = 0;
+  let workedMs = 0, lateMs = 0, earlyMs = 0;
   dayShifts.forEach(shift => {
     const [sh, sm] = shift.start_time.split(":").map(Number);
     const [eh, em] = shift.end_time.split(":").map(Number);
     const isOvernight = (eh * 60 + em) <= (sh * 60 + sm);
-
     const plannedStart = timeStrToDate(dayDate, shift.start_time, false);
     const plannedEnd = timeStrToDate(dayDate, shift.end_time, isOvernight);
 
-    // Borne : l'entrée comptée ne peut pas être avant l'heure prévue
-    const effectiveIn = realIn < plannedStart ? plannedStart : realIn;
-    // Borne : la sortie comptée ne peut pas être après l'heure prévue
-    const effectiveOut = realOut > plannedEnd ? plannedEnd : realOut;
+    // Retard = arrivée après l'heure prévue
+    if (realIn > plannedStart) lateMs += (realIn - plannedStart);
+    // Sortie anticipée = départ avant l'heure prévue
+    if (realOut < plannedEnd) earlyMs += (plannedEnd - realOut);
 
-    if (effectiveOut > effectiveIn) {
-      totalMs += (effectiveOut - effectiveIn);
+    const effectiveIn = realIn < plannedStart ? plannedStart : realIn;
+    const effectiveOut = realOut > plannedEnd ? plannedEnd : realOut;
+    if (effectiveOut > effectiveIn) workedMs += (effectiveOut - effectiveIn);
+  });
+
+  return { workedMs, lateMs, earlyMs };
+}
+
+function clampPairToShift(realIn, realOut, employeeId, allShifts) {
+  return clampPairToShiftDetail(realIn, realOut, employeeId, allShifts).workedMs;
+}
+
+// Calcule heures travaillées + retards pour un employé sur une période
+// Retourne { worked, late, early } en heures décimales
+function computeWorkedHoursDetailed(logs, employeeId, start, end, allShifts) {
+  // Dédoublonner les logs (même type + même minute = doublon)
+  const seen = new Set();
+  const empLogs = logs
+    .filter(l => l.employee_id === employeeId)
+    .sort((a,b) => new Date(a.timestamp) - new Date(b.timestamp))
+    .filter(log => {
+      const key = `${log.type}_${Math.floor(new Date(log.timestamp).getTime() / 60000)}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
+  let workedMs = 0, lateMs = 0, earlyMs = 0;
+  let openIn = null;
+
+  empLogs.forEach(log => {
+    const t = new Date(log.timestamp);
+    if (log.type === "in") {
+      openIn = t;
+    } else if (log.type === "out" && openIn) {
+      if (allShifts && allShifts.length > 0) {
+        const detail = clampPairToShiftDetail(openIn, t, employeeId, allShifts);
+        workedMs += detail.workedMs;
+        lateMs += detail.lateMs;
+        earlyMs += detail.earlyMs;
+      } else {
+        workedMs += (t - openIn);
+      }
+      openIn = null;
     }
   });
 
-  return totalMs;
+  // Entrée orpheline → sortie implicite = heure fin planning
+  if (openIn && allShifts && allShifts.length > 0) {
+    const dayDate = new Date(openIn); dayDate.setHours(0,0,0,0);
+    const dayOfWeek = dayDate.getDay();
+    const dayShifts = allShifts.filter(s =>
+      s.employee_id === employeeId && s.day_of_week === dayOfWeek && !s.is_rest && s.start_time && s.end_time
+    );
+    if (dayShifts.length > 0) {
+      const shift = dayShifts[0];
+      const [eh, em] = shift.end_time.split(":").map(Number);
+      const [sh, sm] = shift.start_time.split(":").map(Number);
+      const isOvernight = (eh * 60 + em) <= (sh * 60 + sm);
+      const plannedEnd = timeStrToDate(dayDate, shift.end_time, isOvernight);
+      const now = new Date();
+      const impliedOut = plannedEnd < now ? plannedEnd : now;
+      const detail = clampPairToShiftDetail(openIn, impliedOut, employeeId, allShifts);
+      workedMs += detail.workedMs;
+      lateMs += detail.lateMs;
+      // Pas de earlyMs pour une sortie implicite
+    }
+  }
+
+  return {
+    worked: workedMs / 3600000,
+    late: lateMs / 3600000,
+    early: earlyMs / 3600000
+  };
 }
 
 // Calcule les heures réellement comptabilisées (bornées sur le planning prévu) pour un employé sur une période
@@ -1258,9 +1324,8 @@ async function renderHoursAndLogs() {
 async function renderHoursTable() {
   const { start, end, endStrict } = getPeriodRange();
   const table = document.getElementById("hoursTable");
-  table.innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--gray);padding:20px;">Chargement…</td></tr>`;
+  table.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--gray);padding:20px;">Chargement…</td></tr>`;
 
-  // Lancer toutes les requêtes en parallèle (3x plus rapide qu'en séquentiel)
   const [logsRes, shiftsData, adjustmentsRes] = await Promise.all([
     sb.from("time_logs").select("*")
       .gte("timestamp", start.toISOString())
@@ -1282,21 +1347,57 @@ async function renderHoursTable() {
     dayAdjustmentsMap[a.employee_id][a.period_date] = parseFloat(a.total_hours);
   });
 
-  let html = "<tr><th>Employé</th><th>Heures travaillées</th><th>Heures prévues</th><th>Écart</th><th></th></tr>";
+  let html = `<tr>
+    <th>Employé</th>
+    <th>Heures travaillées</th>
+    <th>Heures prévues</th>
+    <th>Retards</th>
+    <th>Écart</th>
+    <th>Salaire</th>
+    <th></th>
+  </tr>`;
+
   for (const emp of employees) {
     const hasAdjustmentInPeriod = !!dayAdjustmentsMap[emp.id];
-    const worked = computeWorkedHoursWithAdjustments(emp.id, start, endStrict, timeLogsCache, dayAdjustmentsMap, allShifts);
+
+    // Heures travaillées avec détail retards
+    const detail = computeWorkedHoursDetailed(timeLogsCache, emp.id, start, endStrict, allShifts);
+    let worked = detail.worked;
+    const lateHours = detail.late;
+    const earlyHours = detail.early;
+
+    // Ajouter les ajustements manuels
+    const empAdj = dayAdjustmentsMap[emp.id] || {};
+    let adjWorked = 0;
+    // Pour les jours avec ajustement, remplacer le calcul auto
+    if (hasAdjustmentInPeriod) {
+      worked = computeWorkedHoursWithAdjustments(emp.id, start, endStrict, timeLogsCache, dayAdjustmentsMap, allShifts);
+    }
+
     const theoretical = computeTheoreticalHours(emp.id, start, endStrict, allShifts);
     const diff = worked - theoretical;
     let diffClass = diff > 0.05 ? "hours-over" : diff < -0.05 ? "hours-under" : "hours-ok";
+
+    // Salaire : calcul précis en minutes
+    let salaire = null;
+    if (emp.hourly_rate) {
+      const totalMinutes = Math.round(worked * 60);
+      salaire = Math.round((totalMinutes / 60) * emp.hourly_rate);
+    }
+
     html += `<tr>
-      <td class="emp-col">${emp.full_name}</td>
-      <td>${fmtHours(worked)}${hasAdjustmentInPeriod ? ' <span class="pill gray" title="Contient des heures corrigées manuellement">corrigé</span>' : ''}</td>
-      <td>${fmtHours(theoretical)}</td>
-      <td class="${diffClass}">${diff >= 0 ? "+" : ""}${fmtHours(diff)}</td>
+      <td class="emp-col" style="font-weight:700;">${emp.full_name}</td>
       <td>
-        <button class="small-link" style="background:none;border:none;" onclick="openAdjustmentModal('${emp.id}', 'day', '${fmtDate(new Date())}')">Corriger un jour</button>
-        ${hasAdjustmentInPeriod ? `<button class="small-link" style="background:none;border:none;color:var(--red-text);" onclick="resetHoursForPeriod('${emp.id}', '${fmtDate(start)}', '${fmtDate(endStrict)}')">Réinitialiser</button>` : ''}
+        ${fmtHours(worked)}
+        ${hasAdjustmentInPeriod ? ' <span class="pill gray" style="font-size:11px;" title="Contient des corrections manuelles">corrigé</span>' : ''}
+      </td>
+      <td>${fmtHours(theoretical)}</td>
+      <td style="color:var(--red-text);">${lateHours > 0.01 ? '−' + fmtHours(lateHours) : '<span style="color:var(--green)">✓</span>'}</td>
+      <td class="${diffClass}">${diff >= 0 ? "+" : ""}${fmtHours(diff)}</td>
+      <td style="font-weight:700;">${salaire !== null ? salaire.toLocaleString('fr-FR') + ' FDJ' : '—'}</td>
+      <td>
+        <button class="small-link" style="background:none;border:none;font-size:12px;" onclick="openAdjustmentModal('${emp.id}', 'day', '${fmtDate(new Date())}')">Corriger</button>
+        ${hasAdjustmentInPeriod ? `<button class="small-link" style="background:none;border:none;color:var(--red-text);font-size:12px;" onclick="resetHoursForPeriod('${emp.id}', '${fmtDate(start)}', '${fmtDate(endStrict)}')">Reset</button>` : ''}
       </td>
     </tr>`;
   }

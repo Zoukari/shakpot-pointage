@@ -816,7 +816,7 @@ async function openHistoryModal(employeeId) {
     });
 
     const worked = computeWorkedHoursWithAdjustments(employeeId, monthStart, monthEnd, logs || [], dayAdjustmentsMap, allShifts);
-    const theoretical = computeTheoreticalHours(employeeId, monthStart, monthEnd, allShifts);
+    const theoretical = computeTheoreticalHours(employeeId, monthStart, monthEnd, allShifts, dayAdjustmentsMap);
 
     // On n'affiche pas les mois totalement vides avant l'embauche, sauf le mois en cours
     if (i > 0 && worked === 0 && theoretical === 0) continue;
@@ -1254,14 +1254,24 @@ function computeWorkedHours(logs, employeeId, start, end, allShifts) {
 }
 
 // Calcule les heures théoriques prévues pour un employé sur la période (somme des shifts du planning applicable)
-function computeTheoreticalHours(employeeId, start, end, allShifts) {
+// Calcule les heures théoriques prévues pour un employé sur la période
+// Tient compte des ajustements : si un jour est corrigé manuellement à 0h (absence, avant embauche),
+// il est exclu du théorique.
+function computeTheoreticalHours(employeeId, start, end, allShifts, dayAdjustmentsMap) {
+  const empAdj = (dayAdjustmentsMap && dayAdjustmentsMap[employeeId]) || {};
   let total = 0;
   let cursor = new Date(start);
   while (cursor < end) {
+    const dateStr = fmtDate(cursor);
+    // Si ce jour a un ajustement à 0 (absence, avant embauche, repos) → exclure du théorique
+    if (empAdj[dateStr] === 0) {
+      cursor.setDate(cursor.getDate() + 1);
+      continue;
+    }
     const dayOfWeek = cursor.getDay();
     const dayShifts = allShifts.filter(s => s.employee_id === employeeId && s.day_of_week === dayOfWeek && !s.is_rest);
     dayShifts.forEach(s => { total += shiftDurationHours(s.start_time, s.end_time); });
-    cursor.setDate(cursor.getDate()+1);
+    cursor.setDate(cursor.getDate() + 1);
   }
   return total;
 }
@@ -1374,7 +1384,7 @@ async function renderHoursTable() {
       worked = computeWorkedHoursWithAdjustments(emp.id, start, endStrict, timeLogsCache, dayAdjustmentsMap, allShifts);
     }
 
-    const theoretical = computeTheoreticalHours(emp.id, start, endStrict, allShifts);
+    const theoretical = computeTheoreticalHours(emp.id, start, endStrict, allShifts, dayAdjustmentsMap);
     const diff = worked - theoretical;
     let diffClass = diff > 0.05 ? "hours-over" : diff < -0.05 ? "hours-under" : "hours-ok";
 
@@ -1893,7 +1903,7 @@ async function renderMyspaceHours() {
 
   const allShifts = await loadAllShifts();
   const worked = computeWorkedHoursWithAdjustments(myspaceEmployee.id, start, endStrict, logs || [], dayAdjustmentsMap, allShifts);
-  const theoretical = computeTheoreticalHours(myspaceEmployee.id, start, endStrict, allShifts);
+  const theoretical = computeTheoreticalHours(myspaceEmployee.id, start, endStrict, allShifts, {});
   const diff = worked - theoretical;
   let diffClass = "hours-ok";
   if (diff > 0.05) diffClass = "hours-over";

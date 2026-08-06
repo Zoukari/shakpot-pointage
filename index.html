@@ -1257,6 +1257,43 @@ td.today-col.emp-col{ background: var(--rose-light) !important; color: var(--bor
   </div>
 </div>
 
+<!-- Modal détail journalier employé -->
+<div id="dayDetailModalOverlay" class="modal-overlay">
+  <div class="modal" style="max-width:680px;max-height:90vh;overflow-y:auto;">
+    <h3 id="dayDetailTitle">Détail des heures</h3>
+    <div id="dayDetailContent"></div>
+    <div class="modal-actions">
+      <button class="btn secondary full" onclick="closeDayDetailModal()">Fermer</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal repos compensatoires -->
+<div id="compDaysModalOverlay" class="modal-overlay">
+  <div class="modal" style="max-width:520px;">
+    <h3 id="compDaysTitle">Repos compensatoires</h3>
+    <div id="compDaysContent"></div>
+    <div style="margin-top:16px;padding-top:16px;border-top:2px solid var(--rose-light);">
+      <h4 style="margin:0 0 10px;color:var(--bordeaux-dark);">Ajouter un repos</h4>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
+        <div>
+          <label style="font-size:12px;color:var(--gray);">Date travaillée</label>
+          <input type="date" id="compAcquiredDate" style="width:100%;padding:8px;border-radius:8px;border:2px solid var(--rose-light);font-size:13px;">
+        </div>
+        <div>
+          <label style="font-size:12px;color:var(--gray);">Heures travaillées</label>
+          <input type="number" id="compAcquiredHours" placeholder="ex: 7.8" step="0.1" style="width:100%;padding:8px;border-radius:8px;border:2px solid var(--rose-light);font-size:13px;">
+        </div>
+      </div>
+      <input type="text" id="compAcquiredNote" placeholder="Motif" style="width:100%;padding:8px;border-radius:8px;border:2px solid var(--rose-light);font-size:13px;margin-bottom:8px;">
+      <button class="btn full" onclick="saveCompDay()">+ Ajouter</button>
+    </div>
+    <div class="modal-actions" style="margin-top:12px;">
+      <button class="btn secondary full" onclick="document.getElementById('compDaysModalOverlay').classList.remove('active')">Fermer</button>
+    </div>
+  </div>
+</div>
+
 <script src="app.js"></script>
 </body>
 </html>

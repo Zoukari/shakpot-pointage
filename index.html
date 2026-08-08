@@ -942,6 +942,15 @@ td.today-col.emp-col{ background: var(--rose-light) !important; color: var(--bor
 
     <!-- TAB: Hours -->
     <div id="adminPanelHours" class="admin-panel">
+      <!-- Alertes automatiques -->
+      <div id="alertsCard" class="card" style="display:none;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+          <h3 style="margin:0;color:var(--red-text);">⚠️ Alertes détectées</h3>
+          <button class="small-link" style="border:none;background:none;font-size:13px;" onclick="document.getElementById('alertsCard').style.display='none'">Masquer</button>
+        </div>
+        <div id="alertsList"></div>
+      </div>
+
       <div class="card">
         <div class="toolbar">
           <label style="font-weight:700;font-size:14px;">Période :</label>

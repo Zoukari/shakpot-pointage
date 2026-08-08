@@ -1327,8 +1327,115 @@ function computeWorkedHoursWithAdjustments(employeeId, start, end, logs, dayAdju
 }
 
 async function renderHoursAndLogs() {
-  // Lance les deux en parallèle pour éviter d'attendre l'un après l'autre
   await Promise.all([renderHoursTable(), renderLogsTable()]);
+  checkAlerts(); // Vérifier les alertes après le rendu
+}
+
+// ============================================
+// ALERTES AUTOMATIQUES
+// ============================================
+async function checkAlerts() {
+  const { start, end } = getPeriodRange();
+  const alertsCard = document.getElementById("alertsCard");
+  const alertsList = document.getElementById("alertsList");
+  if (!alertsCard || !alertsList) return;
+
+  const { data: logs } = await sb.from("time_logs").select("*, employees(full_name)")
+    .gte("timestamp", start.toISOString())
+    .lt("timestamp", end.toISOString())
+    .order("timestamp");
+
+  if (!logs || logs.length === 0) { alertsCard.style.display = "none"; return; }
+
+  const allShifts = await loadAllShifts();
+  const alerts = [];
+
+  // Grouper les logs par employé
+  const byEmp = {};
+  logs.forEach(l => {
+    if (!byEmp[l.employee_id]) byEmp[l.employee_id] = [];
+    byEmp[l.employee_id].push(l);
+  });
+
+  for (const [empId, empLogs] of Object.entries(byEmp)) {
+    const empName = empLogs[0].employees?.full_name || "Inconnu";
+
+    // Trier par timestamp
+    empLogs.sort((a,b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+    // Grouper par jour
+    const byDay = {};
+    empLogs.forEach(l => {
+      const dayKey = new Date(l.timestamp).toISOString().slice(0,10);
+      if (!byDay[dayKey]) byDay[dayKey] = [];
+      byDay[dayKey].push(l);
+    });
+
+    for (const [day, dayLogs] of Object.entries(byDay)) {
+      const entries = dayLogs.filter(l => l.type === "in");
+      const exits = dayLogs.filter(l => l.type === "out");
+
+      // Doublons d'entrée (même minute)
+      const entryMinutes = entries.map(l => Math.floor(new Date(l.timestamp).getTime() / 60000));
+      const uniqueEntries = new Set(entryMinutes);
+      if (uniqueEntries.size < entries.length) {
+        alerts.push({ type: "warning", emp: empName, day, msg: `${entries.length} entrées en doublon` });
+      }
+
+      // Doublons de sortie
+      const exitMinutes = exits.map(l => Math.floor(new Date(l.timestamp).getTime() / 60000));
+      const uniqueExits = new Set(exitMinutes);
+      if (uniqueExits.size < exits.length) {
+        alerts.push({ type: "warning", emp: empName, day, msg: `${exits.length} sorties en doublon` });
+      }
+
+      // Entrée sans sortie (uniquement si la journée est passée)
+      const dayDate = new Date(day + "T23:59:59");
+      if (entries.length > 0 && exits.length === 0 && dayDate < new Date()) {
+        alerts.push({ type: "error", emp: empName, day, msg: "Entrée sans sortie (sortie implicite appliquée)" });
+      }
+
+      // Sortie sans entrée
+      if (exits.length > 0 && entries.length === 0) {
+        alerts.push({ type: "error", emp: empName, day, msg: "Sortie sans entrée" });
+      }
+
+      // Journée travaillée pendant un repos
+      const d = new Date(day + "T00:00:00");
+      const dow = d.getDay();
+      const empShifts = allShifts.filter(s => s.employee_id === empId && s.day_of_week === dow);
+      if (empShifts.length > 0 && empShifts[0].is_rest && entries.length > 0) {
+        alerts.push({ type: "info", emp: empName, day, msg: "Travail pendant un jour de repos prévu" });
+      }
+
+      // Pointage après minuit potentiellement mal rattaché
+      const lateNightLogs = dayLogs.filter(l => {
+        const h = new Date(l.timestamp).getHours();
+        return h >= 2 && h < 8 && l.type === "in";
+      });
+      if (lateNightLogs.length > 0) {
+        alerts.push({ type: "warning", emp: empName, day, msg: "Entrée entre 2h et 8h — vérifier si rattachement correct" });
+      }
+    }
+  }
+
+  if (alerts.length === 0) {
+    alertsCard.style.display = "none";
+    return;
+  }
+
+  const colors = { error: "#ffeaea", warning: "#fff8e6", info: "#e8f4f8" };
+  const icons = { error: "🔴", warning: "🟡", info: "🔵" };
+
+  alertsList.innerHTML = alerts.map(a => `
+    <div style="display:flex;align-items:flex-start;gap:10px;padding:8px 10px;margin-bottom:6px;background:${colors[a.type]};border-radius:8px;font-size:13px;">
+      <span>${icons[a.type]}</span>
+      <div>
+        <strong>${a.emp}</strong> — ${a.day}
+        <div style="color:var(--gray);">${a.msg}</div>
+      </div>
+    </div>`).join("");
+  alertsCard.style.display = "block";
 }
 
 async function renderHoursTable() {

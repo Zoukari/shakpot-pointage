@@ -1379,25 +1379,25 @@ async function checkAlerts() {
       const entryMinutes = entries.map(l => Math.floor(new Date(l.timestamp).getTime() / 60000));
       const uniqueEntries = new Set(entryMinutes);
       if (uniqueEntries.size < entries.length) {
-        alerts.push({ type: "warning", emp: empName, day, msg: `${entries.length} entrées en doublon` });
+        alerts.push({ type: "warning", emp: empName, empId, day, msg: `${entries.length} entrées en doublon` });
       }
 
       // Doublons de sortie
       const exitMinutes = exits.map(l => Math.floor(new Date(l.timestamp).getTime() / 60000));
       const uniqueExits = new Set(exitMinutes);
       if (uniqueExits.size < exits.length) {
-        alerts.push({ type: "warning", emp: empName, day, msg: `${exits.length} sorties en doublon` });
+        alerts.push({ type: "warning", emp: empName, empId, day, msg: `${exits.length} sorties en doublon` });
       }
 
       // Entrée sans sortie (uniquement si la journée est passée)
       const dayDate = new Date(day + "T23:59:59");
       if (entries.length > 0 && exits.length === 0 && dayDate < new Date()) {
-        alerts.push({ type: "error", emp: empName, day, msg: "Entrée sans sortie (sortie implicite appliquée)" });
+        alerts.push({ type: "error", emp: empName, empId, day, msg: "Entrée sans sortie (sortie implicite appliquée)" });
       }
 
       // Sortie sans entrée
       if (exits.length > 0 && entries.length === 0) {
-        alerts.push({ type: "error", emp: empName, day, msg: "Sortie sans entrée" });
+        alerts.push({ type: "error", emp: empName, empId, day, msg: "Sortie sans entrée" });
       }
 
       // Journée travaillée pendant un repos
@@ -1405,7 +1405,7 @@ async function checkAlerts() {
       const dow = d.getDay();
       const empShifts = allShifts.filter(s => s.employee_id === empId && s.day_of_week === dow);
       if (empShifts.length > 0 && empShifts[0].is_rest && entries.length > 0) {
-        alerts.push({ type: "info", emp: empName, day, msg: "Travail pendant un jour de repos prévu" });
+        alerts.push({ type: "info", emp: empName, empId, day, msg: "Travail pendant un jour de repos prévu" });
       }
 
       // Pointage après minuit potentiellement mal rattaché
@@ -1414,7 +1414,7 @@ async function checkAlerts() {
         return h >= 2 && h < 8 && l.type === "in";
       });
       if (lateNightLogs.length > 0) {
-        alerts.push({ type: "warning", emp: empName, day, msg: "Entrée entre 2h et 8h — vérifier si rattachement correct" });
+        alerts.push({ type: "warning", emp: empName, empId, day, msg: "Entrée entre 2h et 8h — vérifier si rattachement correct" });
       }
     }
   }
@@ -1427,15 +1427,85 @@ async function checkAlerts() {
   const colors = { error: "#ffeaea", warning: "#fff8e6", info: "#e8f4f8" };
   const icons = { error: "🔴", warning: "🟡", info: "🔵" };
 
-  alertsList.innerHTML = alerts.map(a => `
-    <div style="display:flex;align-items:flex-start;gap:10px;padding:8px 10px;margin-bottom:6px;background:${colors[a.type]};border-radius:8px;font-size:13px;">
-      <span>${icons[a.type]}</span>
-      <div>
-        <strong>${a.emp}</strong> — ${a.day}
-        <div style="color:var(--gray);">${a.msg}</div>
+  alertsList.innerHTML = alerts.map((a, i) => {
+    // Bouton d'action adapté au type d'alerte
+    let actionBtn = "";
+    if (a.type === "error" && a.msg.includes("sans sortie")) {
+      actionBtn = `<button onclick="alertAddLog('${a.empId}','${a.day}','out')" style="border:1px solid var(--red-text);background:transparent;color:var(--red-text);border-radius:6px;padding:3px 10px;cursor:pointer;font-size:11px;font-weight:700;">+ Ajouter sortie</button>`;
+    } else if (a.type === "error" && a.msg.includes("sans entrée")) {
+      actionBtn = `<button onclick="alertAddLog('${a.empId}','${a.day}','in')" style="border:1px solid var(--red-text);background:transparent;color:var(--red-text);border-radius:6px;padding:3px 10px;cursor:pointer;font-size:11px;font-weight:700;">+ Ajouter entrée</button>`;
+    } else if (a.type === "warning" && a.msg.includes("doublon")) {
+      actionBtn = `<button onclick="alertFixDuplicate('${a.empId}','${a.day}')" style="border:1px solid var(--bordeaux);background:transparent;color:var(--bordeaux);border-radius:6px;padding:3px 10px;cursor:pointer;font-size:11px;font-weight:700;">Voir & supprimer</button>`;
+    }
+
+    return `<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding:8px 12px;margin-bottom:6px;background:${colors[a.type]};border-radius:8px;font-size:13px;">
+      <div style="display:flex;gap:10px;align-items:flex-start;">
+        <span>${icons[a.type]}</span>
+        <div>
+          <strong>${a.emp}</strong> — ${a.day}
+          <div style="color:var(--gray);font-size:12px;">${a.msg}</div>
+        </div>
       </div>
-    </div>`).join("");
+      ${actionBtn}
+    </div>`;
+  }).join("");
   alertsCard.style.display = "block";
+}
+
+// Ouvre le modal de saisie manuelle pré-rempli pour ajouter entrée ou sortie
+function alertAddLog(empId, day, type) {
+  // Pré-remplir le modal de saisie manuelle
+  document.getElementById("manualLogEmployee").value = empId;
+  document.getElementById("manualLogType").value = type;
+  document.getElementById("manualLogDate").value = day;
+  document.getElementById("manualLogTime").value = type === "out" ? "01:30" : "17:00";
+  document.getElementById("manualLogModalOverlay").classList.add("active");
+}
+
+// Affiche les pointages du jour pour permettre la suppression des doublons
+async function alertFixDuplicate(empId, day) {
+  const empName = employees.find(e => e.id === empId)?.full_name || "Employé";
+  const start = new Date(day + "T00:00:00");
+  const end = new Date(day + "T23:59:59");
+  // Inclure les sorties nocturnes
+  end.setDate(end.getDate() + 1); end.setHours(8, 0, 0, 0);
+
+  const { data: logs } = await sb.from("time_logs").select("*")
+    .eq("employee_id", empId)
+    .gte("timestamp", start.toISOString())
+    .lt("timestamp", end.toISOString())
+    .order("timestamp");
+
+  const modal = document.createElement("div");
+  modal.className = "modal-overlay active";
+  modal.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:9999;";
+  modal.innerHTML = `
+    <div style="background:#fff;border-radius:16px;padding:24px;width:90%;max-width:420px;max-height:80vh;overflow-y:auto;">
+      <h3 style="margin:0 0 14px;color:var(--bordeaux-dark);">🟡 Pointages du ${day} — ${empName}</h3>
+      <p style="font-size:13px;color:var(--gray);margin-bottom:12px;">Identifie et supprime les doublons :</p>
+      ${(logs || []).map(l => {
+        const t = new Date(l.timestamp).toLocaleTimeString("fr-FR", {hour:"2-digit", minute:"2-digit"});
+        const typeLabel = l.type === "in" ? "🟢 Entrée" : "🔴 Sortie";
+        const manualLabel = l.manual_entry ? " <span style='font-size:10px;color:var(--gray);'>(manuel)</span>" : "";
+        return `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--rose-light);">
+          <span style="font-size:14px;">${typeLabel} ${t}${manualLabel}</span>
+          <button onclick="alertDeleteLog('${l.id}', this.closest('.modal-overlay'))" style="border:none;background:var(--red-bg);color:var(--red-text);border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px;font-weight:700;">✕ Supprimer</button>
+        </div>`;
+      }).join("")}
+      <div style="margin-top:14px;display:flex;gap:8px;">
+        <button onclick="this.closest('.modal-overlay').remove()" style="flex:1;padding:10px;border-radius:8px;border:2px solid var(--rose-light);background:transparent;cursor:pointer;font-weight:700;">Fermer</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+}
+
+async function alertDeleteLog(logId, modalEl) {
+  if (!confirm("Supprimer ce pointage ?")) return;
+  const { error } = await sb.from("time_logs").delete().eq("id", logId);
+  if (error) { alert("Erreur: " + error.message); return; }
+  showToast("✓ Pointage supprimé");
+  if (modalEl) modalEl.remove();
+  renderHoursAndLogs();
 }
 
 async function renderHoursTable() {

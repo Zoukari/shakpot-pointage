@@ -139,35 +139,48 @@ async function computeHourlyActivationCode() {
 async function checkKioskActivation() {
   const deviceCode = getDeviceCode();
 
-  if (!deviceCode) {
-    // Aucun appareil enregistré localement : vérifie s'il existe déjà UN kiosque officiel en base
-    const { data: existing } = await sb.from("kiosk_devices").select("id").eq("revoked", false).limit(1);
+  if (deviceCode) {
+    // Cet appareil a déjà un code stocké : vérifie qu'il n'a pas été révoqué
+    try {
+      const { data: device } = await sb.from("kiosk_devices").select("*").eq("device_code", deviceCode).maybeSingle();
+      if (device && !device.revoked) {
+        // Appareil valide → laisser passer directement
+        await sb.from("kiosk_devices").update({ last_seen_at: new Date().toISOString() }).eq("device_code", deviceCode);
+        document.getElementById("kioskActivationCard").style.display = "none";
+        document.getElementById("kioskMainCard").style.display = "block";
+        return;
+      }
+    } catch(e) {
+      // En cas d'erreur réseau, laisser passer quand même (le code est stocké localement)
+      document.getElementById("kioskActivationCard").style.display = "none";
+      document.getElementById("kioskMainCard").style.display = "block";
+      return;
+    }
+    // Code révoqué : supprimer et redemander
+    localStorage.removeItem(DEVICE_STORAGE_KEY);
+  }
+
+  // Pas de code local : vérifie si un kiosque existe déjà en base
+  try {
+    const { data: existing } = await sb.from("kiosk_devices").select("id").limit(1);
     if (!existing || existing.length === 0) {
-      // Personne ne s'est jamais activé : CET appareil devient automatiquement le kiosque officiel, sans code
+      // Premier appareil : activation automatique sans code
       await registerNewDevice(true, "Premier appareil (auto)");
       document.getElementById("kioskActivationCard").style.display = "none";
       document.getElementById("kioskMainCard").style.display = "block";
       return;
     }
-    // Un kiosque existe déjà ailleurs : cet appareil doit taper le code d'activation horaire
-    document.getElementById("kioskActivationCard").style.display = "block";
-    document.getElementById("kioskMainCard").style.display = "none";
+  } catch(e) {
+    // Erreur base : activer automatiquement pour ne pas bloquer
+    await registerNewDevice(true, "Auto (erreur base)");
+    document.getElementById("kioskActivationCard").style.display = "none";
+    document.getElementById("kioskMainCard").style.display = "block";
     return;
   }
 
-  // Cet appareil a déjà un code stocké : vérifie qu'il n'a pas été révoqué depuis
-  const { data: device } = await sb.from("kiosk_devices").select("*").eq("device_code", deviceCode).single();
-  if (!device || device.revoked) {
-    localStorage.removeItem(DEVICE_STORAGE_KEY);
-    document.getElementById("kioskActivationCard").style.display = "block";
-    document.getElementById("kioskMainCard").style.display = "none";
-    return;
-  }
-
-  // Appareil valide : met à jour le "dernier vu" et laisse passer
-  await sb.from("kiosk_devices").update({ last_seen_at: new Date().toISOString() }).eq("device_code", deviceCode);
-  document.getElementById("kioskActivationCard").style.display = "none";
-  document.getElementById("kioskMainCard").style.display = "block";
+  // Un kiosque existe ailleurs : demander le code d'activation
+  document.getElementById("kioskActivationCard").style.display = "block";
+  document.getElementById("kioskMainCard").style.display = "none";
 }
 
 async function registerNewDevice(isPrimary, label) {
@@ -1598,7 +1611,9 @@ async function renderHoursTable() {
       <td style="white-space:nowrap;">
         <button class="small-link" style="background:none;border:none;font-size:12px;" onclick="openDayDetailModal('${emp.id}','${emp.full_name}')">📋 Détail</button>
         <button class="small-link" style="background:none;border:none;font-size:12px;" onclick="openCompDaysModal('${emp.id}','${emp.full_name}')">🌙 Repos</button>
+        <button class="small-link" style="background:none;border:none;font-size:12px;" onclick="generatePdfReport('${emp.id}','${emp.full_name}',${emp.hourly_rate || 0})">📄 PDF</button>
         <button class="small-link" style="background:none;border:none;font-size:12px;" onclick="openAdjustmentModal('${emp.id}', 'day', '${fmtDate(new Date())}')">✏ Corriger</button>
+        <button class="small-link" style="background:none;border:none;font-size:12px;color:var(--gray);" onclick="openCorrectionsHistory('${emp.id}','${emp.full_name}')">🕐 Historique</button>
         ${hasAdjustmentInPeriod ? `<button class="small-link" style="background:none;border:none;color:var(--red-text);font-size:12px;" onclick="resetHoursForPeriod('${emp.id}', '${fmtDate(start)}', '${fmtDate(endStrict)}')">Reset</button>` : ''}
       </td>
     </tr>`;
@@ -1648,10 +1663,12 @@ async function saveAdjustment() {
   const note = document.getElementById("adjustmentNote").value.trim();
 
   if (!periodDate) { alert("Merci de choisir une date."); return; }
-  if (isNaN(hours) || hours < 0) {
-    alert("Merci de saisir un nombre d'heures valide.");
-    return;
-  }
+  if (isNaN(hours) || hours < 0) { alert("Merci de saisir un nombre d'heures valide."); return; }
+
+  // Récupérer la valeur actuelle pour l'historique
+  const { data: existing } = await sb.from("hours_adjustments").select("total_hours")
+    .eq("employee_id", employeeId).eq("period_type", "day").eq("period_date", periodDate).maybeSingle();
+  const oldHours = existing ? parseFloat(existing.total_hours) : null;
 
   const { error } = await sb.from("hours_adjustments").upsert({
     employee_id: employeeId,
@@ -1662,6 +1679,19 @@ async function saveAdjustment() {
   }, { onConflict: "employee_id,period_type,period_date" });
 
   if (error) { alert("Erreur: " + error.message); return; }
+
+  // Enregistrer dans l'historique
+  await sb.from("adjustments_history").insert({
+    employee_id: employeeId,
+    period_date: periodDate,
+    old_hours: oldHours,
+    new_hours: hours,
+    note: note || null,
+    corrected_by: "admin"
+  });
+
+  const empName = employees.find(e => e.id === employeeId)?.full_name || "";
+  showToast(`✏️ ${empName} — ${periodDate} corrigé à ${fmtHours(hours)}`);
   closeAdjustmentModal();
   await renderHoursTable();
 }
@@ -3278,6 +3308,47 @@ async function deleteWhatsappContact(id) {
   await sb.from("whatsapp_contacts").delete().eq("id", id);
   showToast("🗑 Contact supprimé");
   renderAdminShoppingList();
+}
+
+async function openCorrectionsHistory(empId, empName) {
+  const { data } = await sb.from("adjustments_history")
+    .select("*").eq("employee_id", empId)
+    .order("corrected_at", { ascending: false }).limit(50);
+
+  const modal = document.createElement("div");
+  modal.className = "modal-overlay active";
+  modal.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:9999;";
+
+  const rows = (data || []).map(h => {
+    const oldStr = h.old_hours !== null ? fmtHours(parseFloat(h.old_hours)) : "—";
+    const newStr = fmtHours(parseFloat(h.new_hours));
+    const date = new Date(h.corrected_at).toLocaleDateString("fr-FR", {day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"});
+    return `<tr>
+      <td style="padding:6px 8px;font-size:12px;">${h.period_date}</td>
+      <td style="padding:6px 8px;font-size:12px;color:var(--gray);">${oldStr}</td>
+      <td style="padding:6px 8px;font-size:12px;font-weight:700;color:var(--bordeaux-dark);">${newStr}</td>
+      <td style="padding:6px 8px;font-size:11px;color:var(--gray);">${h.note || '—'}</td>
+      <td style="padding:6px 8px;font-size:11px;color:var(--gray);">${date}</td>
+    </tr>`;
+  }).join("");
+
+  modal.innerHTML = `
+    <div style="background:#fff;border-radius:16px;padding:24px;width:92%;max-width:600px;max-height:85vh;overflow-y:auto;">
+      <h3 style="margin:0 0 14px;color:var(--bordeaux-dark);">📋 Historique corrections — ${empName}</h3>
+      ${data && data.length > 0 ? `
+        <table style="width:100%;border-collapse:collapse;">
+          <tr style="background:var(--bordeaux-dark);color:#fff;">
+            <th style="padding:6px 8px;font-size:11px;text-align:left;">Date corrigée</th>
+            <th style="padding:6px 8px;font-size:11px;text-align:left;">Avant</th>
+            <th style="padding:6px 8px;font-size:11px;text-align:left;">Après</th>
+            <th style="padding:6px 8px;font-size:11px;text-align:left;">Motif</th>
+            <th style="padding:6px 8px;font-size:11px;text-align:left;">Modifié le</th>
+          </tr>
+          ${rows}
+        </table>` : `<div style="text-align:center;color:var(--gray);padding:20px;">Aucune correction enregistrée.</div>`}
+      <button onclick="this.closest('.modal-overlay').remove()" style="margin-top:16px;width:100%;padding:12px;border-radius:8px;border:2px solid var(--rose-light);background:transparent;cursor:pointer;font-weight:700;">Fermer</button>
+    </div>`;
+  document.body.appendChild(modal);
 }
 
 // ============================================

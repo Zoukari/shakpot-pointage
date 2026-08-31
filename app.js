@@ -541,8 +541,28 @@ async function submitTimeLog() {
 
   if (error) {
     console.error(error);
-    document.getElementById("doneMessage").textContent = "Erreur lors de l'enregistrement.";
-    document.getElementById("doneMessage").className = "status-msg error";
+    // Sauvegarder localement
+    const entry = {
+      employee_id: selectedEmployee.id,
+      employee_name: selectedEmployee.full_name,
+      type: pendingLogType,
+      timestamp: new Date().toISOString(),
+      selfie_url: selfieUrl,
+      device_code: deviceCode,
+      saved_at: new Date().toISOString()
+    };
+    const queue = JSON.parse(localStorage.getItem("shakpot_offline_queue") || "[]");
+    queue.push(entry);
+    localStorage.setItem("shakpot_offline_queue", JSON.stringify(queue));
+
+    // Afficher quand même un message de succès à l'employé
+    const typeLabel = pendingLogType === "in" ? "arrivée" : "départ";
+    document.getElementById("doneMessage").textContent = `${pendingLogType === "in" ? "Bonne arrivée" : "Bonne route"}, ${selectedEmployee.full_name} !`;
+    document.getElementById("doneMessage").className = "status-msg success";
+    showToast(`✓ Pointage enregistré localement`, "error");
+
+    // Alerter l'admin via WhatsApp
+    alertAdminOffline(selectedEmployee.full_name, typeLabel, entry.timestamp);
   } else {
     const msg = pendingLogType === "in"
       ? `👋 Bonne arrivée, ${selectedEmployee.full_name} !`
@@ -550,8 +570,52 @@ async function submitTimeLog() {
     document.getElementById("doneMessage").textContent = msg.replace(/^[^\s]+\s/, '');
     document.getElementById("doneMessage").className = "status-msg success";
     showToast(msg);
+
+    // Essayer de synchroniser les pointages en attente
+    syncOfflineQueue();
   }
   goToStep("stepDone");
+}
+
+// Alerte admin si Supabase est down pendant un pointage
+async function alertAdminOffline(empName, typeLabel, timestamp) {
+  try {
+    const { data: contacts } = await sb.from("whatsapp_contacts").select("*").eq("active", true).limit(1);
+    if (!contacts || contacts.length === 0) return;
+    const phone = contacts[0].phone.replace(/\D/g, "");
+    const heure = new Date(timestamp).toLocaleTimeString("fr-FR", {hour:"2-digit", minute:"2-digit"});
+    const msg = `⚠️ ALERTE SHAKPOT\n\nProblème de connexion au serveur.\n\n${empName} a pointé son ${typeLabel} à ${heure} mais le pointage est sauvegardé localement.\n\nVérifiez la connexion internet du kiosque dès que possible. Le pointage sera synchronisé automatiquement.`;
+    window.open(`https://api.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(msg)}`, "_blank");
+  } catch(e) { console.error("Impossible d'alerter l'admin:", e); }
+}
+
+// Synchronise les pointages sauvegardés localement dès que la connexion revient
+async function syncOfflineQueue() {
+  const queue = JSON.parse(localStorage.getItem("shakpot_offline_queue") || "[]");
+  if (queue.length === 0) return;
+
+  const synced = [];
+  const failed = [];
+
+  for (const entry of queue) {
+    const { error } = await sb.from("time_logs").insert({
+      employee_id: entry.employee_id,
+      type: entry.type,
+      timestamp: entry.timestamp,
+      selfie_url: entry.selfie_url || null,
+      device_code: entry.device_code || null,
+      manual_entry: false
+    });
+    if (!error) synced.push(entry);
+    else failed.push(entry);
+  }
+
+  localStorage.setItem("shakpot_offline_queue", JSON.stringify(failed));
+
+  if (synced.length > 0) {
+    showToast(`✓ ${synced.length} pointage(s) synchronisé(s)`);
+    console.log(`${synced.length} pointages offline synchronisés`);
+  }
 }
 
 function resetKiosk() {
@@ -3595,6 +3659,29 @@ window.addEventListener("DOMContentLoaded", () => {
   loadEmployeesForKiosk();
   checkKioskActivation();
   checkSecretAdminAccess();
+  // Synchroniser les pointages offline au démarrage
+  setTimeout(async () => {
+    await syncOfflineQueue();
+    showOfflineBadge();
+  }, 2000);
 });
 window.addEventListener("hashchange", checkSecretAdminAccess);
+
+// Affiche un badge rouge si des pointages sont en attente de synchro
+function showOfflineBadge() {
+  const queue = JSON.parse(localStorage.getItem("shakpot_offline_queue") || "[]");
+  let badge = document.getElementById("offlineBadge");
+  if (queue.length === 0) {
+    if (badge) badge.remove();
+    return;
+  }
+  if (!badge) {
+    badge = document.createElement("div");
+    badge.id = "offlineBadge";
+    badge.style.cssText = `position:fixed;top:12px;right:12px;background:#ef4444;color:#fff;border-radius:999px;padding:6px 14px;font-size:13px;font-weight:700;z-index:9999;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.2);`;
+    badge.onclick = () => syncOfflineQueue().then(showOfflineBadge);
+    document.body.appendChild(badge);
+  }
+  badge.textContent = `⚠ ${queue.length} pointage(s) hors ligne — Appuyer pour sync`;
+}
 

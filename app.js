@@ -140,45 +140,38 @@ async function checkKioskActivation() {
   const deviceCode = getDeviceCode();
 
   if (deviceCode) {
-    // Cet appareil a déjà un code stocké : vérifie qu'il n'a pas été révoqué
-    try {
-      const { data: device } = await sb.from("kiosk_devices").select("*").eq("device_code", deviceCode).maybeSingle();
-      if (device && !device.revoked) {
-        // Appareil valide → laisser passer directement
-        await sb.from("kiosk_devices").update({ last_seen_at: new Date().toISOString() }).eq("device_code", deviceCode);
-        document.getElementById("kioskActivationCard").style.display = "none";
-        document.getElementById("kioskMainCard").style.display = "block";
-        return;
-      }
-    } catch(e) {
-      // En cas d'erreur réseau, laisser passer quand même (le code est stocké localement)
-      document.getElementById("kioskActivationCard").style.display = "none";
-      document.getElementById("kioskMainCard").style.display = "block";
-      return;
-    }
-    // Code révoqué : supprimer et redemander
-    localStorage.removeItem(DEVICE_STORAGE_KEY);
+    // Un code est stocké localement → cet appareil est activé
+    // On affiche directement l'écran de pointage SANS attendre la base
+    document.getElementById("kioskActivationCard").style.display = "none";
+    document.getElementById("kioskMainCard").style.display = "block";
+    // Mise à jour "last_seen" en arrière-plan (non bloquante)
+    sb.from("kiosk_devices").update({ last_seen_at: new Date().toISOString() })
+      .eq("device_code", deviceCode).then(({ data, error }) => {
+        if (error) console.warn("last_seen non mis à jour:", error.message);
+      });
+    return;
   }
 
-  // Pas de code local : vérifie si un kiosque existe déjà en base
+  // Pas de code local → vérifier si c'est le premier appareil
   try {
     const { data: existing } = await sb.from("kiosk_devices").select("id").limit(1);
     if (!existing || existing.length === 0) {
-      // Premier appareil : activation automatique sans code
+      // Premier appareil → activation automatique
       await registerNewDevice(true, "Premier appareil (auto)");
       document.getElementById("kioskActivationCard").style.display = "none";
       document.getElementById("kioskMainCard").style.display = "block";
       return;
     }
   } catch(e) {
-    // Erreur base : activer automatiquement pour ne pas bloquer
-    await registerNewDevice(true, "Auto (erreur base)");
+    // Erreur réseau et pas de code local → activer quand même pour ne pas bloquer
+    console.warn("Erreur vérification kiosque:", e);
+    await registerNewDevice(true, "Auto (erreur réseau)");
     document.getElementById("kioskActivationCard").style.display = "none";
     document.getElementById("kioskMainCard").style.display = "block";
     return;
   }
 
-  // Un kiosque existe ailleurs : demander le code d'activation
+  // Des appareils existent déjà et pas de code local → demander le code
   document.getElementById("kioskActivationCard").style.display = "block";
   document.getElementById("kioskMainCard").style.display = "none";
 }

@@ -2815,16 +2815,18 @@ async function renderMyspaceDebtSummary() {
   debts.forEach(d => { debtByDay[d.entry_date] = d; });
 
   let html = "";
-  let totalGiven = 0, totalCourses = 0;
+  // Utiliser amount_given - amount_paid depuis la table debts (= même source que l'admin)
+  let totalGiven = 0, totalPaid = 0;
 
   [...days].sort().forEach(date => {
     const dayPurchases = purchasesByDay[date] || [];
     const debt = debtByDay[date];
-    const dayTotal = dayPurchases.reduce((s, p) => s + parseFloat(p.amount), 0);
     const given = debt ? parseFloat(debt.amount_given) : 0;
-    const solde = given - dayTotal;
+    // amount_paid = total courses auto-calculé par syncDebtPaidForDate (même que admin)
+    const paid = debt ? parseFloat(debt.amount_paid) : 0;
+    const solde = given - paid;
     totalGiven += given;
-    totalCourses += dayTotal;
+    totalPaid += paid;
 
     html += `<div style="border:1px solid var(--rose-light);border-radius:10px;margin-bottom:8px;overflow:hidden;">
       <div style="background:var(--rose-pale);padding:10px 14px;display:flex;justify-content:space-between;align-items:center;">
@@ -2832,7 +2834,6 @@ async function renderMyspaceDebtSummary() {
         <span style="color:${solde >= 0 ? 'var(--green)' : 'var(--red-text)'};font-weight:700;">${solde >= 0 ? '+' : ''}${solde.toFixed(0)} FDJ</span>
       </div>
       <div style="padding:10px 14px;">
-        <!-- Montant reçu modifiable -->
         <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--rose-light);font-size:14px;">
           <span>💵 Reçu</span>
           <span>
@@ -2842,7 +2843,6 @@ async function renderMyspaceDebtSummary() {
               <button onclick="deleteMyspaceDebt('${debt.id}','${date}')" style="border:none;background:none;cursor:pointer;color:var(--red-text);font-size:13px;">✕</button>` : ''}
           </span>
         </div>
-        <!-- Courses modifiables -->
         ${dayPurchases.map(p => `
         <div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--rose-light);font-size:13px;color:var(--gray);">
           <span>${p.store_name}</span>
@@ -2853,13 +2853,13 @@ async function renderMyspaceDebtSummary() {
           </span>
         </div>`).join("")}
         <div style="display:flex;justify-content:space-between;padding-top:6px;font-size:13px;font-weight:700;color:var(--red-text);">
-          <span>🛒 Total courses</span><span>${dayTotal.toFixed(0)} FDJ</span>
+          <span>🛒 Total courses</span><span>${paid.toFixed(0)} FDJ</span>
         </div>
       </div>
     </div>`;
   });
 
-  const soldeTotal = totalGiven - totalCourses;
+  const soldeTotal = totalGiven - totalPaid;
   html = `<div style="background:${soldeTotal >= 0 ? 'var(--green-bg)' : 'var(--red-bg)'};border-radius:12px;padding:14px;text-align:center;margin-bottom:14px;">
     <div style="font-size:12px;color:var(--gray);font-weight:700;margin-bottom:4px;">Solde total de la période</div>
     <div style="font-size:26px;font-weight:800;color:${soldeTotal >= 0 ? 'var(--green)' : 'var(--red-text)'};">${soldeTotal >= 0 ? '+' : ''}${soldeTotal.toFixed(0)} FDJ</div>

@@ -2815,18 +2815,16 @@ async function renderMyspaceDebtSummary() {
   debts.forEach(d => { debtByDay[d.entry_date] = d; });
 
   let html = "";
-  // Utiliser amount_given - amount_paid depuis la table debts (= même source que l'admin)
-  let totalGiven = 0, totalPaid = 0;
+  let totalGiven = 0, totalCourses = 0;
 
   [...days].sort().forEach(date => {
     const dayPurchases = purchasesByDay[date] || [];
     const debt = debtByDay[date];
     const given = debt ? parseFloat(debt.amount_given) : 0;
-    // amount_paid = total courses auto-calculé par syncDebtPaidForDate (même que admin)
-    const paid = debt ? parseFloat(debt.amount_paid) : 0;
-    const solde = given - paid;
+    const dayTotal = dayPurchases.reduce((s, p) => s + parseFloat(p.amount || 0), 0);
+    const solde = given - dayTotal;
     totalGiven += given;
-    totalPaid += paid;
+    totalCourses += dayTotal;
 
     html += `<div style="border:1px solid var(--rose-light);border-radius:10px;margin-bottom:8px;overflow:hidden;">
       <div style="background:var(--rose-pale);padding:10px 14px;display:flex;justify-content:space-between;align-items:center;">
@@ -2853,17 +2851,29 @@ async function renderMyspaceDebtSummary() {
           </span>
         </div>`).join("")}
         <div style="display:flex;justify-content:space-between;padding-top:6px;font-size:13px;font-weight:700;color:var(--red-text);">
-          <span>🛒 Total courses</span><span>${paid.toFixed(0)} FDJ</span>
+          <span>🛒 Total courses</span><span>${dayTotal.toFixed(0)} FDJ</span>
         </div>
       </div>
     </div>`;
   });
 
-  const soldeTotal = totalGiven - totalPaid;
-  html = `<div style="background:${soldeTotal >= 0 ? 'var(--green-bg)' : 'var(--red-bg)'};border-radius:12px;padding:14px;text-align:center;margin-bottom:14px;">
-    <div style="font-size:12px;color:var(--gray);font-weight:700;margin-bottom:4px;">Solde total de la période</div>
-    <div style="font-size:26px;font-weight:800;color:${soldeTotal >= 0 ? 'var(--green)' : 'var(--red-text)'};">${soldeTotal >= 0 ? '+' : ''}${soldeTotal.toFixed(0)} FDJ</div>
-    <div style="font-size:12px;color:var(--gray);margin-top:2px;">${soldeTotal >= 0 ? '✓ Je dois rendre ce montant' : '⚠ Je suis en déficit'}</div>
+  const soldeTotal = totalGiven - totalCourses;
+  html = `<div style="background:${soldeTotal >= 0 ? 'var(--green-bg)' : 'var(--red-bg)'};border-radius:12px;padding:14px;margin-bottom:14px;">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+      <div style="background:rgba(255,255,255,.5);border-radius:8px;padding:10px;text-align:center;">
+        <div style="font-size:11px;color:var(--gray);font-weight:700;">Total reçu</div>
+        <div style="font-size:18px;font-weight:800;">${totalGiven.toFixed(0)} FDJ</div>
+      </div>
+      <div style="background:rgba(255,255,255,.5);border-radius:8px;padding:10px;text-align:center;">
+        <div style="font-size:11px;color:var(--gray);font-weight:700;">Total courses</div>
+        <div style="font-size:18px;font-weight:800;color:var(--red-text);">${totalCourses.toFixed(0)} FDJ</div>
+      </div>
+    </div>
+    <div style="text-align:center;">
+      <div style="font-size:12px;color:var(--gray);font-weight:700;margin-bottom:4px;">Solde de la période</div>
+      <div style="font-size:28px;font-weight:800;color:${soldeTotal >= 0 ? 'var(--green)' : 'var(--red-text)'};">${soldeTotal >= 0 ? '+' : ''}${soldeTotal.toFixed(0)} FDJ</div>
+      <div style="font-size:12px;color:var(--gray);margin-top:2px;">${soldeTotal >= 0 ? '✓ Je dois rendre ce montant' : '⚠ Je suis en déficit'}</div>
+    </div>
   </div>` + html;
 
   el.innerHTML = html;

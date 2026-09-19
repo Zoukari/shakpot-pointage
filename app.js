@@ -2545,12 +2545,13 @@ async function renderAccountingSummary() {
   const startStr = fmtDate(start), endStr = fmtDate(end);
   document.getElementById("accountingSummary").innerHTML = `<div style="text-align:center;color:var(--gray);padding:20px;">Chargement…</div>`;
 
-  const [purchasesRes, chargesRes, revenueRes, debtsRes, allDebtsRes] = await Promise.all([
+  const [purchasesRes, chargesRes, revenueRes, debtsRes, allDebtsRes, allPurchasesRes] = await Promise.all([
     sb.from("accounting_purchases").select("*").gte("entry_date", startStr).lt("entry_date", endStr).order("entry_date").order("created_at"),
     sb.from("accounting_charges").select("*, employees(full_name)").gte("entry_date", startStr).lt("entry_date", endStr).order("entry_date").order("created_at"),
     sb.from("accounting_revenue").select("*").gte("entry_date", startStr).lt("entry_date", endStr).order("entry_date"),
     sb.from("accounting_delivery_debts").select("*").gte("entry_date", startStr).lt("entry_date", endStr).order("entry_date"),
-    sb.from("accounting_delivery_debts").select("amount_given,amount_paid")
+    sb.from("accounting_delivery_debts").select("amount_given"),
+    sb.from("accounting_purchases").select("amount")
   ]);
 
   const purchases = purchasesRes.data || [];
@@ -2582,7 +2583,11 @@ async function renderAccountingSummary() {
   const totalPurchases = purchases.reduce((s, p) => s + parseFloat(p.amount), 0);
   const totalCharges = charges.reduce((s, c) => s + parseFloat(c.amount), 0);
   const netProfit = totalCA - totalPurchases - totalCharges;
-  const totalCumulatedDebt = (allDebtsRes.data || []).reduce((s, d) => s + (parseFloat(d.amount_given) - parseFloat(d.amount_paid)), 0);
+  // Dette cumulée = total donné au livreur - total de toutes les courses
+  // (pas amount_paid qui peut être désynchronisé)
+  const totalAllGiven = (allDebtsRes.data || []).reduce((s, d) => s + parseFloat(d.amount_given || 0), 0);
+  const totalAllPurchases = (allPurchasesRes.data || []).reduce((s, p) => s + parseFloat(p.amount || 0), 0);
+  const totalCumulatedDebt = totalAllGiven - totalAllPurchases;
 
   // Résumé global
   let html = `
@@ -2707,9 +2712,16 @@ async function renderAccountingSummary() {
     // Ligne total du jour
     const dayPurchasesTotal = dayPurchases.reduce((s, p) => s + parseFloat(p.amount), 0);
     const dayChargesTotal = dayCharges.reduce((s, c) => s + parseFloat(c.amount), 0);
-    const dayProfit = (dayCA||0) - dayPurchasesTotal - dayChargesTotal;
+    const dayDebt = debtByDay[date];
+    const dayLivreurGiven = dayDebt ? parseFloat(dayDebt.amount_given) : 0;
+    // Solde livreur du jour = ce qu'il a reçu - ce qu'il a dépensé en courses
+    const dayLivreurSolde = dayLivreurGiven - dayPurchasesTotal;
+    const dayProfit = dayCA ? dayCA - dayChargesTotal + dayLivreurSolde : null;
+    const profitStr = dayProfit !== null
+      ? `<strong style="color:${dayProfit>=0?'var(--green)':'var(--red-text)'};">${dayProfit>=0?'+':''}${dayProfit.toFixed(0)} FDJ</strong>`
+      : `<span style="color:var(--gray);">— (CA non saisi)</span>`;
     html += `<tr style="background:var(--rose-pale);border-bottom:2px solid var(--bordeaux);">
-      <td colspan="2" style="padding:6px 12px;font-size:11px;color:var(--gray);">Bénéfice : <strong style="color:${dayProfit>=0?'var(--green)':'var(--red-text)'};">${dayProfit>=0?'+':''}${dayProfit.toFixed(0)} FDJ</strong></td>
+      <td colspan="2" style="padding:6px 12px;font-size:11px;color:var(--gray);">Bénéfice : ${profitStr}</td>
       <td style="padding:6px 12px;font-size:11px;text-align:right;font-weight:700;color:var(--red-text);">${dayChargesTotal>0?dayChargesTotal.toFixed(0)+' FDJ':''}</td>
       <td></td>
       <td style="padding:6px 12px;font-size:11px;text-align:right;font-weight:700;color:var(--red-text);">${dayPurchasesTotal>0?dayPurchasesTotal.toFixed(0)+' FDJ':''}</td>

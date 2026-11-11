@@ -2550,8 +2550,8 @@ async function renderAccountingSummary() {
     sb.from("accounting_charges").select("*, employees(full_name)").gte("entry_date", startStr).lt("entry_date", endStr).order("entry_date").order("created_at"),
     sb.from("accounting_revenue").select("*").gte("entry_date", startStr).lt("entry_date", endStr).order("entry_date"),
     sb.from("accounting_delivery_debts").select("*").gte("entry_date", startStr).lt("entry_date", endStr).order("entry_date"),
-    sb.from("accounting_delivery_debts").select("amount_given"),
-    sb.from("accounting_purchases").select("amount")
+    sb.from("accounting_delivery_debts").select("amount_given").gte("entry_date", startStr).lt("entry_date", endStr),
+    sb.from("accounting_purchases").select("amount").gte("entry_date", startStr).lt("entry_date", endStr)
   ]);
 
   const purchases = purchasesRes.data || [];
@@ -2610,7 +2610,7 @@ async function renderAccountingSummary() {
     </div>
   </div>
   <div style="background:${totalCumulatedDebt>=0?'var(--green-bg)':'var(--red-bg)'};border-radius:10px;padding:12px;text-align:center;margin-bottom:18px;">
-    <div style="font-size:11px;color:var(--gray);font-weight:700;">🚚 Dette livreur cumulée (depuis le début)</div>
+    <div style="font-size:11px;color:var(--gray);font-weight:700;">🚚 Solde livreur — période sélectionnée</div>
     <div style="font-size:20px;font-weight:800;color:${totalCumulatedDebt>=0?'var(--green)':'var(--red-text)'};">${totalCumulatedDebt>=0?'+':''}${totalCumulatedDebt.toFixed(0)} FDJ</div>
     <div style="font-size:11px;color:var(--gray);">${totalCumulatedDebt>=0?'Le livreur vous doit':'Vous lui devez'}</div>
   </div>`;
